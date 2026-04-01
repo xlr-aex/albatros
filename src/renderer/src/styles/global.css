@@ -1,0 +1,304 @@
+/* =============================================================================
+   Albatros — Global Styles
+   ============================================================================= */
+
+@import './variables.css';
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  font-size: var(--ui-font-size, 16px);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  height: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  overflow: hidden; /* Panels handle their own scrolling */
+  user-select: none; /* Prevent accidental text selection on UI chrome */
+}
+
+/* Allow text selection in the article reader panel */
+.article-reader--content {
+  user-select: text;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: var(--bg-elevated); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Focus ring ─────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: var(--focus-ring-width, 3px) solid var(--border-focus);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── Text selection ─────────────────────────────────────────────────────────── */
+::selection {
+  background: color-mix(in srgb, var(--brand-500), transparent 70%);
+  color: var(--text-primary);
+}
+
+/* ── Buttons reset ──────────────────────────────────────────────────────────── */
+button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Links ──────────────────────────────────────────────────────────────────── */
+a {
+  color: var(--brand-400);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ── YouTube Premium Preview ───────────────────────────────────────────────── */
+.youtube-player-container {
+  margin: 1.5rem 0;
+  width: 100%;
+}
+
+.youtube-player-preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  text-decoration: none !important;
+}
+
+.youtube-player-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  display: block;
+}
+
+.youtube-player-preview:hover img {
+  transform: scale(1.05);
+}
+
+.youtube-player-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(0,0,0,0) 0%, rgba(0,0,0,0.4) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.3s ease;
+}
+
+.youtube-player-preview:hover .youtube-player-overlay {
+  background: radial-gradient(circle, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 100%);
+}
+
+.youtube-play-button {
+  width: 68px;
+  height: 68px;
+  background: #FF0000;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  color: white;
+}
+
+.youtube-player-preview:hover .youtube-play-button {
+  transform: scale(1.15);
+  background: #ff1a1a;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 35px rgba(255, 0, 0, 0.8);
+}
+
+.youtube-play-button svg {
+  margin-left: 4px; /* Optical centering */
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.youtube-pill {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 5px 12px;
+  background: #FF0000;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+}
+
+.youtube-player-preview:hover .youtube-pill {
+  opacity: 1;
+  background: rgba(255, 0, 0, 0.8);
+}
+
+/* ── Article HTML content rendering ────────────────────────────────────────── */
+.article-body {
+  user-select: text;
+  line-height: var(--leading-loose);
+  color: var(--text-primary);
+  font-size: var(--article-font-size, var(--text-base));
+}
+.article-body h1,
+.article-body h2,
+.article-body h3 {
+  margin: 1.5em 0 0.5em;
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+}
+.article-body p      { margin-bottom: 1em; }
+.article-body img    {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+}
+
+/* Force Reddit preview thumbnails to upscale and center cleanly */
+.article-body img[src*="redd.it"],
+.article-body img[src*="redditmedia.com"] {
+  min-width: 60% !important;
+  width: auto !important;
+  display: block !important;
+  margin: 1.5em auto !important;
+}
+
+/* Retroactive fix for already cached articles that still have archaic HTML tables */
+.article-body table:has(img[src*="redd.it"]),
+.article-body table:has(img[src*="redditmedia.com"]) {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.article-body table:has(img[src*="redd.it"]) tr,
+.article-body table:has(img[src*="redditmedia.com"]) tr {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.article-body table:has(img[src*="redd.it"]) td,
+.article-body table:has(img[src*="redditmedia.com"]) td {
+  display: block !important;
+  width: 100% !important;
+}
+.article-body figure {
+  margin: 1.5em 0;
+  text-align: center;
+}
+.article-body figcaption {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+  font-style: italic;
+}
+.article-body pre    { background: var(--bg-surface); border-radius: var(--radius-md); padding: var(--space-4); overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
+.article-body code   { font-family: var(--font-mono); background: var(--bg-surface); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.9em; }
+.article-body pre code { background: none; padding: 0; }
+.article-body blockquote { border-left: 4px solid var(--brand-500); padding: var(--space-3) var(--space-4); background: rgba(59, 130, 246, 0.05); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text-secondary); margin: 1.25em 0; }
+.article-body ul,
+.article-body ol     { padding-left: var(--space-6); margin-bottom: 1em; }
+.article-body li     { margin-bottom: var(--space-1); }
+.article-body a      { color: var(--brand-400); }
+.article-body mark   { background: rgba(59, 130, 246, 0.25); color: var(--brand-400); padding: 1px 3px; border-radius: 2px; }
+
+/* ── Utility classes ────────────────────────────────────────────────────────── */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flex       { display: flex; }
+.flex-col   { flex-direction: column; }
+.items-center { align-items: center; }
+.gap-2      { gap: var(--space-2); }
+.gap-3      { gap: var(--space-3); }
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-border {
+  to { transform: rotate(360deg); }
+}
+.animate-fade-in { animation: fadeIn 200ms var(--ease-out) both; }
+
+/* CSS spinner (replaces ⟳ character): apply .spinner class to an empty <span> */
+.spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--brand-400);
+  border-radius: 50%;
+  animation: spin-border 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Reduced-motion: disable all transitions and animations */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Draggable titlebar (frameless window) ───────────────────────────────────── */
+.drag-region { -webkit-app-region: drag; }
+.no-drag     { -webkit-app-region: no-drag; }

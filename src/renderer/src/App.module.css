@@ -1,0 +1,43 @@
+/* App.module.css */
+
+.appContainer {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+.resizer {
+  position: relative;
+  width: var(--resize-handle-w);
+  margin-left: calc(-1 * var(--resize-handle-w) / 2);
+  margin-right: calc(-1 * var(--resize-handle-w) / 2);
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resizer:hover, .resizer:active {
+  /* Subtle highlight instead of full solid color to not overwhelm the handle */
+  background: rgba(59, 130, 246, 0.05); /* brand-500 with low opacity */
+}
+
+.resizerHandle {
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border-light);
+  transition: background 150ms var(--ease-out), height 150ms var(--ease-out);
+}
+
+.resizer:hover .resizerHandle,
+.resizer:active .resizerHandle {
+  background: var(--brand-500);
+  height: 48px;
+}

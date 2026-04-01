@@ -1,0 +1,126 @@
+/**
+ * @file main/index.ts
+ * @description Electron main process entry point.
+ *
+ * Boot sequence:
+ *  1. Wait for app.whenReady()
+ *  2. Initialise sql.js database + run migrations
+ *  3. Instantiate all services (FeedService, ArticleService, etc.)
+ *  4. Register all IPC handlers
+ *  5. Create the BrowserWindow
+ *  6. Start the Scheduler (which triggers an immediate sync)
+ *  7. On before-quit: stop scheduler, close DB
+ */
+
+import { app, BrowserWindow, shell } from 'electron'
+import path from 'path'
+
+// ── DB ────────────────────────────────────────────────────────────────────────
+import { getDatabase, closeDatabase } from './db/connection'
+import { runMigrations } from './db/migrations/runner'
+
+// ── Services ─────────────────────────────────────────────────────────────────
+import { FeedService }     from './services/FeedService'
+import { ArticleService }  from './services/ArticleService'
+import { SearchService }   from './services/SearchService'
+import { SettingsService } from './services/SettingsService'
+import { OpmlService }     from './services/OpmlService'
+
+// ── Sync ─────────────────────────────────────────────────────────────────────
+import { SyncEngine } from './sync/SyncEngine'
+import { Scheduler }  from './sync/Scheduler'
+
+// ── IPC ───────────────────────────────────────────────────────────────────────
+import { registerFeedHandlers }     from './ipc/feeds'
+import { registerArticleHandlers }  from './ipc/articles'
+import { registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
+
+// ─── Window helper ────────────────────────────────────────────────────────────
+
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width:           1440,
+    height:          900,
+    minWidth:        900,
+    minHeight:       600,
+    backgroundColor: '#0f1117', // Dark background to avoid white flash
+    titleBarStyle:   'hiddenInset',
+    webPreferences:  {
+      preload:          path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,    // Required for security
+      nodeIntegration:  false,   // Never allow node in renderer
+      sandbox:          false,   // Needed for sql.js WASM in preload
+      webviewTag:       true,    // Enable <webview> for embedded browser
+    },
+  })
+
+  // Open external links in the OS browser, not Electron
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  // Load the renderer
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    // Development: Vite dev server
+    void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    win.webContents.openDevTools({ mode: 'detach' })
+  } else {
+    // Production: static build
+    void win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  }
+
+  return win
+}
+
+// ─── Application lifecycle ────────────────────────────────────────────────────
+
+let scheduler: Scheduler | null = null
+
+async function bootstrap(): Promise<void> {
+  // ── 1. Database ──────────────────────────────────────────────────────────
+  const db = await getDatabase()
+  runMigrations(db)
+
+  // ── 2. Services ──────────────────────────────────────────────────────────
+  const feedService     = new FeedService(db)
+  const articleService  = new ArticleService(db)
+  const searchService   = new SearchService(db)
+  const settingsService = new SettingsService(db)
+  const opmlService     = new OpmlService(feedService)
+
+  // ── 3. Sync engine ───────────────────────────────────────────────────────
+  const syncEngine = new SyncEngine(feedService, articleService)
+  scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
+
+  // ── 4. IPC ───────────────────────────────────────────────────────────────
+  registerFeedHandlers(feedService, opmlService, scheduler)
+  registerArticleHandlers(articleService, searchService, feedService)
+  registerSettingsHandlers(settingsService)
+  registerSyncHandlers(scheduler)
+
+  // ── 5. Window ────────────────────────────────────────────────────────────
+  createWindow()
+
+  app.on('activate', () => {
+    // macOS: re-create window when clicking the dock icon with no open windows
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+
+  // ── 6. Start scheduler ───────────────────────────────────────────────────
+  scheduler.start()
+}
+
+// ── Main entry ───────────────────────────────────────────────────────────────
+
+void app.whenReady().then(bootstrap)
+
+app.on('window-all-closed', () => {
+  // On Windows and Linux, quit when all windows are closed
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  scheduler?.stop()
+  closeDatabase()
+})

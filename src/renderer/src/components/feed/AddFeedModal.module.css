@@ -1,0 +1,70 @@
+/* AddFeedModal.module.css */
+
+.overlay {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: var(--bg-overlay);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 150ms var(--ease-out) both;
+}
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 480px;
+  max-width: 94vw;
+  animation: fadeIn 200ms var(--ease-out) both;
+}
+.header {
+  display: flex; align-items: center;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.title { flex: 1; font-size: var(--text-lg); font-weight: var(--weight-semi); }
+.closeBtn { color: var(--text-muted); font-size: 14px; padding: var(--space-1); border-radius: var(--radius-sm); }
+.closeBtn:hover { color: var(--text-primary); background: var(--bg-elevated); }
+
+.form { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.label { font-size: var(--text-sm); color: var(--text-secondary); font-weight: var(--weight-medium); }
+.input, .select {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  padding: 10px var(--space-4);
+  transition: border-color var(--transition);
+}
+.input:focus, .select:focus { border-color: var(--brand-500); outline: none; }
+.select option { background: var(--bg-surface); }
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--color-error);
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.footer { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2); }
+.cancelBtn {
+  padding: 9px var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+.cancelBtn:hover { background: var(--bg-surface); color: var(--text-primary); }
+.submitBtn {
+  padding: 9px var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  background: var(--brand-500);
+  color: #fff;
+}
+.submitBtn:hover:not(:disabled) { background: var(--brand-600); }
