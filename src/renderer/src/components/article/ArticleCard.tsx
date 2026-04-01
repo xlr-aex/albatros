@@ -4,7 +4,7 @@
  * Shows feed name, title, excerpt, relative time, and read/star state.
  */
 
-import React, { useState } from 'react'
+import React, { useState, memo } from 'react'
 import type { ArticleSummary } from '../../store/articleStore'
 import { useArticleStore } from '../../store/articleStore'
 import { formatRelativeTime, unescapeHtml } from '../../utils/format'
@@ -17,7 +17,7 @@ interface Props {
   onClick: () => void
 }
 
-export function ArticleCard({ article, isSelected, onClick }: Props) {
+export const ArticleCard = memo(function ArticleCard({ article, isSelected, onClick }: Props) {
   const { title, excerpt, feed_title, published_at, is_read } = article
   const currentSearchQuery = useArticleStore(state => state.currentSearchQuery)
   const [thumbError, setThumbError] = useState(false)
@@ -95,4 +95,4 @@ export function ArticleCard({ article, isSelected, onClick }: Props) {
       )}
     </button>
   )
-}
+})

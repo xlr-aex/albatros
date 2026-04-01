@@ -22,10 +22,10 @@
 .emptyIcon { font-size: 2.5rem; }
 .loader { font-size: 1.5rem; animation: spin 1s linear infinite; display: block; }
 
-/* Header */
+/* Header (now inside scrollable area) */
 .header {
-  padding: var(--space-8) var(--space-8) 0;
-  flex-shrink: 0;
+  padding-bottom: var(--space-4);
+  background: transparent;
 }
 
 .meta {
@@ -54,11 +54,30 @@
   margin-bottom: var(--space-4);
 }
 
-/* Action bar */
+/* Action bar - STICKY */
+.stickyActions {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky, 20);
+  background: color-mix(in srgb, var(--bg-base), transparent 10%);
+  backdrop-filter: blur(12px);
+  padding: var(--space-3) var(--space-8);
+  margin: 0 calc(-1 * var(--space-8)); /* Re-expand to match outer padding */
+  border-bottom: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  transition: all var(--transition);
+}
+
+.stickyActionsScrolled {
+  border-bottom-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-surface), transparent 5%);
+  box-shadow: var(--shadow-sm);
+}
+
 .actions {
   display: flex;
   gap: var(--space-2);
-  margin-bottom: var(--space-5);
   flex-wrap: wrap;
 }
 
@@ -105,14 +124,19 @@
   background: var(--border-subtle);
 }
 
-/* Scrollable content */
+/* Scrollable container */
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-8) var(--space-10);
+  padding: 0 var(--space-8) var(--space-10);
+  width: 100%;
+  scrollbar-gutter: stable;
+}
+
+.contentWrapper {
   max-width: 780px;
   margin: 0 auto;
-  width: 100%;
+  padding-top: var(--space-8);
 }
 
 .noContent {

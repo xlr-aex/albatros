@@ -42,6 +42,10 @@ interface ArticleStore {
   hasMore:           boolean
   currentSearchQuery: string | null
   lastSaveTimestamp:  number | null
+  prefetchedContent:  Map<number, Article>
+
+  /** Pre-fetches full content for a list of articles to the local cache. */
+  prefetchArticles: (ids: number[]) => Promise<void>
 
   /** Replaces the list with a fresh load (on selection change). */
   loadArticles: (params: {
@@ -84,6 +88,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
   hasMore:          true,
   currentSearchQuery: null,
   lastSaveTimestamp:  null,
+  prefetchedContent:  new Map(),
 
   loadArticles: async (params, silent = false) => {
     _lastParams = params
@@ -98,10 +103,20 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       // Global TF-IDF TF/BM25 Semantic Ranking View
       const items = await window.api.search.query(params.searchQuery, 100)
       set({ articles: items, isLoadingList: false, hasMore: false })
+      
+      // Auto-select the first article from search results
+      if (!silent && items.length > 0) {
+        void get().openArticle(items[0].id)
+      }
     } else {
       // Standard chronological list view
       const items = await window.api.articles.list({ ...params, limit: 50 })
       set({ articles: items, isLoadingList: false, hasMore: items.length === 50 })
+      
+      // Auto-select the first article from the new list
+      if (!silent && items.length > 0) {
+        void get().openArticle(items[0].id)
+      }
     }
   },
 
@@ -126,15 +141,70 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     }))
   },
 
-  openArticle: async (id) => {
-    set({ isLoadingArticle: true })
+  prefetchArticles: async (ids) => {
+    const { prefetchedContent } = get()
+    // Only fetch what we don't have
+    const toFetch = ids.filter(id => !prefetchedContent.has(id))
+    if (toFetch.length === 0) return
 
-    // Mark immediately as read (optimistic)
+    for (const id of toFetch) {
+      // Don't overwhelm the IPC bridge; fetch sequentially but quickly
+      const article = await window.api.articles.get(id)
+      if (article) {
+        set(s => {
+          const newMap = new Map(s.prefetchedContent)
+          newMap.set(id, article)
+          
+          // LRU-ish eviction: keep most recent 50
+          if (newMap.size > 50) {
+            const firstKey = newMap.keys().next().value
+            if (firstKey !== undefined) newMap.delete(firstKey)
+          }
+          
+          return { prefetchedContent: newMap }
+        })
+      }
+    }
+  },
+
+  openArticle: async (id) => {
+    const { prefetchedContent } = get()
+    
+    // 1. Check pre-fetch cache first (Instant Load Path)
+    const cached = prefetchedContent.get(id)
+    if (cached) {
+      set({ selectedArticle: cached, isLoadingArticle: false })
+      // Still mark as read
+      get().updateArticleFlag(id, 'is_read', true)
+      void window.api.articles.mark(id, 'read', true)
+      return
+    }
+
+    // 2. Optimistic update: use cached data from the summary list
+    const summary = get().articles.find(a => a.id === id)
+    if (summary) {
+      set({ 
+        selectedArticle: { ...summary, content_html: null, url: null, guid: '', word_count: null } as Article,
+        isLoadingArticle: true 
+      })
+    } else {
+      set({ isLoadingArticle: true })
+    }
+
+    // 3. Mark immediately as read
     get().updateArticleFlag(id, 'is_read', true)
     void window.api.articles.mark(id, 'read', true)
 
+    // 4. Fetch full content
     const article = await window.api.articles.get(id)
-    set({ selectedArticle: article, isLoadingArticle: false })
+    
+    // 5. Ensure we don't overwrite if the user switched articles during the fetch
+    const current = get().selectedArticle
+    if (current && current.id === id) {
+      set({ selectedArticle: article, isLoadingArticle: false })
+    } else {
+      set({ isLoadingArticle: false })
+    }
   },
 
   closeArticle: () => set({ selectedArticle: null }),

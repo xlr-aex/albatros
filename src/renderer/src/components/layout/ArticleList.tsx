@@ -13,7 +13,7 @@ import { ArticleCard } from '../article/ArticleCard'
 import styles from './ArticleList.module.css'
 
 export function ArticleList() {
-  const { articles, selectedArticle, isLoadingList, hasMore, loadMore, openArticle } = useArticleStore()
+  const { articles, selectedArticle, isLoadingList, hasMore, loadMore, openArticle, prefetchArticles } = useArticleStore()
   const { selection } = useFeedStore()
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -37,12 +37,36 @@ export function ArticleList() {
     }
   }, [virtualItems, articles.length, hasMore, isLoadingList, loadMore])
 
+  // ── Background Pre-fetching ────────────────────────────────────────────────
+  useEffect(() => {
+    if (virtualItems.length === 0 || isLoadingList) return
+
+    const timer = setTimeout(() => {
+      const visibleIndices = virtualItems.map((vi) => vi.index)
+      const firstVisible = visibleIndices[0]
+      // We look ahead for unread articles in the current view + the next 10 items
+      const lookaheadRange = 10
+      const nextUnreadBatch = articles
+        .slice(firstVisible, firstVisible + virtualItems.length + lookaheadRange)
+        .filter((a) => !a.is_read)
+        .slice(0, 12)
+        .map((a) => a.id)
+
+      if (nextUnreadBatch.length > 0) {
+        void prefetchArticles(nextUnreadBatch)
+      }
+    }, 600) // Trigger 600ms after scroll settling
+
+    return () => clearTimeout(timer)
+  }, [virtualItems, articles, isLoadingList, prefetchArticles])
+
   // ── Keyboard navigation ─────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
+      const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
 
-      if (e.key === 'ArrowDown' || e.key === 'j') {
+      // Arrows always work to change post selection ("d'office")
+      if (e.key === 'ArrowDown' || (e.key === 'j' && !isInputFocused)) {
         e.preventDefault()
         if (articles.length === 0) return
         if (!selectedArticle) {
@@ -55,7 +79,7 @@ export function ArticleList() {
           void openArticle(articles[idx + 1].id)
           rowVirtualizer.scrollToIndex(idx + 1, { align: 'auto' })
         }
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if (e.key === 'ArrowUp' || (e.key === 'k' && !isInputFocused)) {
         e.preventDefault()
         if (!selectedArticle || articles.length === 0) return
         const idx = articles.findIndex(a => a.id === selectedArticle.id)

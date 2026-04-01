@@ -28,6 +28,8 @@ const getDbPath = () => path.join(app.getPath('userData'), 'albatros.db')
 // ─── Module-level singleton ───────────────────────────────────────────────────
 
 let _db: Database | null = null
+let _persistTimeout: ReturnType<typeof setTimeout> | null = null
+const PERSIST_DEBOUNCE_MS = 10_000 // 10 seconds
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -59,13 +61,35 @@ export async function getDatabase(): Promise<Database> {
 }
 
 /**
- * Writes the current in-memory database state to disk.
- * Must be called after any write operation (INSERT / UPDATE / DELETE).
+ * Schedules a write of the current in-memory database state to disk.
+ * Debounced to avoid excessive I/O on rapid changes (e.g. sync batches).
  */
 export function persistDatabase(): void {
   if (!_db) return
+  if (_persistTimeout) return // Already scheduled
+
+  _persistTimeout = setTimeout(() => {
+    persistDatabaseNow()
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+/**
+ * Immediately writes the current in-memory database state to disk.
+ * Bypasses the debounce timer.
+ */
+export function persistDatabaseNow(): void {
+  if (!_db) return
+  if (_persistTimeout) {
+    clearTimeout(_persistTimeout)
+    _persistTimeout = null
+  }
+
   const data = _db.export()
-  fs.writeFileSync(getDbPath(), Buffer.from(data))
+  try {
+    fs.writeFileSync(getDbPath(), Buffer.from(data))
+  } catch (err) {
+    console.error('[Database] Failed to persist:', err)
+  }
 }
 
 /**
@@ -74,7 +98,7 @@ export function persistDatabase(): void {
  */
 export function closeDatabase(): void {
   if (_db) {
-    persistDatabase()
+    persistDatabaseNow()
     _db.close()
     _db = null
   }

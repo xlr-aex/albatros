@@ -77,6 +77,7 @@ export function ArticleReader() {
   const contentRef = useRef<HTMLDivElement>(null)
   const [linkPopup, setLinkPopup] = useState<{ url: string; x: number; y: number } | null>(null)
   const [embeddedUrl, setEmbeddedUrl] = useState<string | null>(null)
+  const [isScrolled, setIsScrolled] = useState(false)
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [liveComments, setLiveComments] = useState<any[]>([])
@@ -143,6 +144,11 @@ export function ArticleReader() {
     setLinkPopup(null)
   }
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const top = e.currentTarget.scrollTop
+    setIsScrolled(top > 20)
+  }, [])
+
   // Sanitise HTML content
   const safeHtml = selectedArticle?.content_html
     ? DOMPurify.sanitize(selectedArticle.content_html, {
@@ -181,7 +187,7 @@ export function ArticleReader() {
     return safeHtml.replace(regex, '<mark style="background: color-mix(in srgb, var(--brand-500), transparent 70%); color: var(--brand-400); font-weight: bold; border-radius: 2px; padding: 0 2px;">$1</mark>')
   }, [safeHtml, currentSearchQuery])
 
-  if (isLoadingArticle) {
+  if (isLoadingArticle && !selectedArticle) {
     return <div className={styles.empty}><span className="spinner" role="status" aria-label="Loading article" style={{ width: '1.25rem', height: '1.25rem' }} /></div>
   }
 
@@ -235,172 +241,189 @@ export function ArticleReader() {
         </div>
       )}
 
-      {/* ── Header ──────────────────────────────────────────── */}
-      <header className={styles.header}>
-        <div className={styles.meta}>
-          <span className={styles.feedName}>{feed_title}</span>
-          <span className={styles.dot}>·</span>
-          <time className={styles.date} dateTime={published_at ? new Date(published_at * 1000).toISOString() : undefined}>
-            {published_at ? formatDate(published_at) : 'Unknown date'}
-          </time>
-          {readMin && (
-            <>
-              <span className={styles.dot}>·</span>
-              <span className={styles.readTime}>{readMin} min read</span>
-            </>
-          )}
-        </div>
-
-        <h1 className={styles.title}>
-          {title ? (
-            currentSearchQuery 
-              ? <HighlightText text={unescapeHtml(title)} highlight={currentSearchQuery} /> 
-              : unescapeHtml(title)
-          ) : 'Untitled'}
-        </h1>
-
-        {author && <p className={styles.author}>by {author}</p>}
-
-        {/* Action buttons */}
-        <div className={styles.actions}>
-          <button
-            className={`${styles.actionBtn} ${is_saved ? styles.saved : ''}`}
-            onClick={toggleSave}
-            title={is_saved ? 'Remove from Saved' : 'Save Post'}
-          >
-            <svg 
-              width="14" 
-              height="14" 
-              viewBox="0 0 24 24" 
-              fill={is_saved ? 'currentColor' : 'none'} 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-              style={{ marginRight: '6px' }}
-            >
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-            </svg>
-            {is_saved ? 'Saved' : 'Save'}
-          </button>
-          {url && (
-            <>
-              <button className={styles.actionBtn} onClick={() => openInBrowser(url)} title="Open in browser">
-                ↗ Browser
-              </button>
-              <button className={styles.actionBtn} onClick={() => openInApp(url)} title="Open in app">
-                ⧉ Embed
-              </button>
-            </>
-          )}
-        </div>
-
-        <div className={styles.divider} />
-      </header>
-
-      {/* ── Content ─────────────────────────────────────────── */}
-      <div ref={contentRef} className={styles.content} onClick={handleContentClick}>
-        {(() => {
-          if (!selectedArticle) return null
-
-          let baseHtml = highlightedHtml || selectedArticle.content_html || ''
-          
-          // Retroactive fix for cached YouTube articles 
-          // Strips out the old red '▶' widget to remove the "useless triangle"
-          baseHtml = baseHtml.replace(/<div class="youtube-thumbnail-wrapper"[\s\S]*?<\/div>\s*<\/a>\s*<\/div>/g, '')
-
-          // Lock the HTML string in place if the user is currently watching a video.
-          // This absolutely guarantees that React dangerouslySetInnerHTML receives the STRICTLY IDENTICAL string
-          // across re-renders (e.g. from background syncs), completely preventing the iframe from reloading/restarting.
-          if (activeYtVideos.length > 0) {
-            if (frozenContentHtmlRef.current === null) {
-              frozenContentHtmlRef.current = baseHtml
-            }
-            baseHtml = frozenContentHtmlRef.current
-          } else {
-            frozenContentHtmlRef.current = null
-          }
-
-          let htmlToRender = baseHtml
-
-          // Dynamically replace active youtube previews with iframes in the locked HTML string.
-          activeYtVideos.forEach(vid => {
-            const regex = new RegExp(`<a href="[^"]*${vid}"[^>]*class="youtube-player-preview"[^>]*>[\\s\\S]*?</a>`, 'gi')
-            htmlToRender = htmlToRender.replace(
-              regex,
-              `<iframe width="100%" height="100%" src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&dnt=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
-            )
-          })
-
-          const ytVideoIdMatch = selectedArticle.url?.match(/(?:v=|\/)([\w-]{11})(?:\?|&|$)/)
-          const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
-          const hasNewPlayer = htmlToRender.includes('youtube-player-container')
-
-          // Prevent duplicate Reddit self-text rendering by algorithmically checking if the RSS already contains the JSON payload.
-          let showRedditSelftext = !!redditSelftext
-          if (redditSelftext && selectedArticle?.content_html) {
-            const strippedBase = (selectedArticle.content_html || '').replace(/<[^>]+>/g, '').trim()
-            const strippedReddit = redditSelftext.replace(/<[^>]+>/g, '').trim()
-            if (strippedReddit.length > 50 && strippedBase.includes(strippedReddit.substring(0, 50))) {
-              showRedditSelftext = false
-            } else if (strippedBase.length > strippedReddit.length * 0.8 && strippedBase.includes(strippedReddit.substring(0, 20))) {
-              showRedditSelftext = false
-            }
-          }
-
-          return (
-            <>
-              {showRedditSelftext && (
-                <div 
-                  key="reddit-selftext"
-                  className="reddit-selftext" 
-                  style={{ marginBottom: 24, padding: 16, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', fontSize: 15, lineHeight: 1.6, border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', wordBreak: 'break-word' }}
-                  dangerouslySetInnerHTML={{ __html: redditSelftext! }} 
-                />
-              )}
-
-              <RetroPlayerNode 
-                ytVideoId={ytVideoId} 
-                hasNewPlayer={hasNewPlayer} 
-                isActive={ytVideoId ? activeYtVideos.includes(ytVideoId) : false} 
-              />
-
-              {htmlToRender ? (
-                <ArticleContentNode htmlToRender={htmlToRender} />
-              ) : (
-                <p key="no-content-message" className={styles.noContent}>
-                  No content available.{' '}
-                  {selectedArticle.url && <a href={selectedArticle.url} onClick={e => { e.preventDefault(); openInBrowser(selectedArticle.url!) }}>Read on the web ↗</a>}
-                </p>
-              )}
-            </>
-          )
-        })()}
-
-        {/* ── Nested Comments ──────────────────────────── */}
-        {selectedArticle?.url?.includes('reddit.com') && (
-          <div className="comments-section" style={{ marginTop: '3rem' }}>
-            <div className={styles.divider} style={{ marginBottom: '1.5rem' }} />
-            <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-normal)', fontSize: '1.1em', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              💬 Discussion
-              {isLoadingComments && <span className={styles.loader} style={{ fontSize: '0.8em', width: 14, height: 14 }}>⟳</span>}
-              {!isLoadingComments && <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>({liveComments.length})</span>}
-            </h3>
-
-            {!isLoadingComments && liveComments.length > 0 && (
-              <div style={{ background: 'var(--bg-elevated)', borderRadius: '8px', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
-                {liveComments.map(comment => (
-                  <CommentNode key={comment.id} comment={comment} />
-                ))}
+      {!embeddedUrl && (
+        <div 
+          ref={contentRef} 
+          className={styles.content} 
+          onClick={handleContentClick}
+          onScroll={handleScroll}
+        >
+          <div className={styles.contentWrapper}>
+            {/* ── Header Information (Scrolls Away) ─────────── */}
+            <header className={styles.header}>
+              <div className={styles.meta}>
+                <span className={styles.feedName}>{feed_title}</span>
+                <span className={styles.dot}>·</span>
+                <time className={styles.date} dateTime={published_at ? new Date(published_at * 1000).toISOString() : undefined}>
+                  {published_at ? formatDate(published_at) : 'Unknown date'}
+                </time>
+                {readMin && (
+                  <>
+                    <span className={styles.dot}>·</span>
+                    <span className={styles.readTime}>{readMin} min read</span>
+                  </>
+                )}
               </div>
-            )}
 
-            {!isLoadingComments && liveComments.length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9em' }}>No comments found.</p>
-            )}
-          </div>
-        )}
-      </div>
+              <h1 className={styles.title}>
+                {title ? (
+                  currentSearchQuery 
+                    ? <HighlightText text={unescapeHtml(title)} highlight={currentSearchQuery} /> 
+                    : unescapeHtml(title)
+                ) : 'Untitled'}
+              </h1>
+
+              {author && <p className={styles.author}>by {author}</p>}
+            </header>
+
+            {/* ── Sticky Action Bar (Fixed at Top) ───────────── */}
+            <div className={`${styles.stickyActions} ${isScrolled ? styles.stickyActionsScrolled : ''}`}>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.actionBtn} ${is_saved ? styles.saved : ''}`}
+                  onClick={toggleSave}
+                  title={is_saved ? 'Remove from Saved' : 'Save Post'}
+                >
+                  <svg 
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24" 
+                    fill={is_saved ? 'currentColor' : 'none'} 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    style={{ marginRight: '6px' }}
+                  >
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  {is_saved ? 'Saved' : 'Save'}
+                </button>
+                {url && (
+                  <>
+                    <button className={styles.actionBtn} onClick={() => openInBrowser(url)} title="Open in browser">
+                      ↗ Browser
+                    </button>
+                    <button className={styles.actionBtn} onClick={() => openInApp(url)} title="Open in app">
+                      ⧉ Embed
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.divider} style={{ marginBottom: 'var(--space-6)' }} />
+            
+            {/* ── Article Content ──────────────────────────── */}
+            {(() => {
+              if (!selectedArticle) return null
+
+              let baseHtml = highlightedHtml || selectedArticle.content_html || ''
+              
+              // Retroactive fix for cached YouTube articles 
+              // Strips out the old red '▶' widget to remove the "useless triangle"
+              baseHtml = baseHtml.replace(/<div class="youtube-thumbnail-wrapper"[\s\S]*?<\/div>\s*<\/a>\s*<\/div>/g, '')
+
+              // Lock the HTML string in place if the user is currently watching a video.
+              if (activeYtVideos.length > 0) {
+                if (frozenContentHtmlRef.current === null) {
+                  frozenContentHtmlRef.current = baseHtml
+                }
+                baseHtml = frozenContentHtmlRef.current
+              } else {
+                frozenContentHtmlRef.current = null
+              }
+
+              let htmlToRender = baseHtml
+
+              // Dynamically replace active youtube previews with iframes in the locked HTML string.
+              activeYtVideos.forEach(vid => {
+                const regex = new RegExp(`<a href="[^"]*${vid}"[^>]*class="youtube-player-preview"[^>]*>[\\s\\S]*?</a>`, 'gi')
+                htmlToRender = htmlToRender.replace(
+                  regex,
+                  `<iframe width="100%" height="100%" src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&dnt=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
+                )
+              })
+
+              const ytVideoIdMatch = selectedArticle.url?.match(/(?:v=|\/)([\w-]{11})(?:\?|&|$)/)
+              const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
+              const hasNewPlayer = htmlToRender.includes('youtube-player-container')
+
+              // Prevent duplicate Reddit self-text rendering
+              let showRedditSelftext = !!redditSelftext
+              if (redditSelftext && selectedArticle?.content_html) {
+                const strippedBase = (selectedArticle.content_html || '').replace(/<[^>]+>/g, '').trim()
+                const strippedReddit = redditSelftext.replace(/<[^>]+>/g, '').trim()
+                if (strippedReddit.length > 50 && strippedBase.includes(strippedReddit.substring(0, 50))) {
+                  showRedditSelftext = false
+                } else if (strippedBase.length > strippedReddit.length * 0.8 && strippedBase.includes(strippedReddit.substring(0, 20))) {
+                  showRedditSelftext = false
+                }
+              }
+
+              if (isLoadingArticle && !htmlToRender) {
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 0' }}>
+                    <span className="spinner" role="status" aria-label="Loading content" style={{ width: '1.5rem', height: '1.5rem', opacity: 0.5 }} />
+                  </div>
+                )
+              }
+
+              return (
+                <>
+                  {showRedditSelftext && (
+                  <div 
+                    key="reddit-selftext"
+                    className="reddit-selftext" 
+                    style={{ marginBottom: 24, padding: 16, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', fontSize: 15, lineHeight: 1.6, border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', wordBreak: 'break-word' }}
+                    dangerouslySetInnerHTML={{ __html: redditSelftext! }} 
+                  />
+                )}
+
+                <ArticleContentNode htmlToRender={htmlToRender} />
+
+                <RetroPlayerNode 
+                  ytVideoId={ytVideoId} 
+                  hasNewPlayer={hasNewPlayer} 
+                  isActive={ytVideoId ? activeYtVideos.includes(ytVideoId) : false} 
+                />
+
+                {!htmlToRender && (
+                  <p key="no-content-message" className={styles.noContent}>
+                    No content available.{' '}
+                    {selectedArticle.url && <a href={selectedArticle.url} onClick={e => { e.preventDefault(); openInBrowser(selectedArticle.url!) }}>Read on the web ↗</a>}
+                  </p>
+                )}
+              </>
+            )
+          })()}
+
+          {/* ── Nested Comments ──────────────────────────── */}
+          {selectedArticle?.url?.includes('reddit.com') && (
+            <div className="comments-section" style={{ marginTop: '3rem' }}>
+              <div className={styles.divider} style={{ marginBottom: '1.5rem' }} />
+              <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-normal)', fontSize: '1.1em', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                💬 Discussion
+                {isLoadingComments && <span className={styles.loader} style={{ fontSize: '0.8em', width: 14, height: 14 }}>⟳</span>}
+                {!isLoadingComments && <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>({liveComments.length})</span>}
+              </h3>
+
+              {!isLoadingComments && liveComments.length > 0 && (
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: '8px', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
+                  {liveComments.map(comment => (
+                    <CommentNode key={comment.id} comment={comment} />
+                  ))}
+                </div>
+              )}
+
+              {!isLoadingComments && liveComments.length === 0 && (
+                <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9em' }}>No comments found.</p>
+              )}
+            </div>
+          )}
+          </div> {/* end contentWrapper */}
+        </div>
+      )}
 
       {/* ── Link popup ──────────────────────────────────────── */}
       {linkPopup && (
