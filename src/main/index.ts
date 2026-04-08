@@ -13,6 +13,18 @@
  */
 
 import { app, BrowserWindow, shell, session } from 'electron'
+
+// Suppress harmless Chromium DevTools Autofill errors that spam the terminal
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = ((chunk: Uint8Array | string, encoding?: any, callback?: any) => {
+  const str = chunk.toString();
+  if (str.includes('Request Autofill.enable failed') || str.includes('Request Autofill.setAddresses failed')) {
+    if (typeof callback === 'function') callback();
+    return true;
+  }
+  return originalStderrWrite(chunk, encoding, callback);
+}) as any;
+
 import path from 'path'
 import { promises as fs } from 'fs'
 import { ElectronBlocker } from '@cliqz/adblocker-electron'

@@ -180,10 +180,18 @@ export function ArticleReader() {
     const allMatches = [exact, ...words].sort((a, b) => b.length - a.length)
     const pattern = `(${allMatches.join('|')})`
     
-    // Safe lookup ensuring we do not highlight text strictly inside HTML tag properties
-    const regex = new RegExp(`(?![^<]*>)${pattern}`, 'gi')
+    // Safe lookup ensuring we only highlight text content and NOT HTML attributes 
+    // by splitting the string into tags and text nodes.
+    const parts = safeHtml.split(/(<[^>]*>)/g)
+    const regex = new RegExp(`(${pattern})`, 'gi')
     
-    return safeHtml.replace(regex, '<mark style="background: color-mix(in srgb, var(--brand-500), transparent 70%); color: var(--brand-400); font-weight: bold; border-radius: 2px; padding: 0 2px;">$1</mark>')
+    return parts.map((part, i) => {
+      // Text nodes are at even indices, HTML tags at odd indices
+      if (i % 2 === 0) {
+        return part.replace(regex, '<mark style="background: yellow; color: #000; font-weight: 600; border-radius: 2px; padding: 0 2px;">$1</mark>')
+      }
+      return part
+    }).join('')
   }, [safeHtml, currentSearchQuery])
 
   if (isLoadingArticle && !selectedArticle) {

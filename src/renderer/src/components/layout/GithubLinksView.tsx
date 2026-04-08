@@ -10,6 +10,57 @@ interface GithubLink {
   groupTitle?: string
 }
 
+/** Robust image loader with retry + fallback for GitHub OpenGraph previews */
+function RepoPreviewImage({ orgRepo, alt }: { orgRepo: string; alt: string }) {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'fallback'>('loading')
+  const [retried, setRetried] = useState(false)
+
+  // Primary: GitHub OpenGraph. Fallback: owner avatar + gradient.
+  const owner = orgRepo.split('/')[0]
+  const primarySrc = `https://opengraph.githubassets.com/1/${orgRepo}`
+  const retrySrc = `https://opengraph.githubassets.com/${Date.now()}/${orgRepo}`
+  const avatarSrc = `https://github.com/${owner}.png?size=80`
+
+  const handleError = useCallback(() => {
+    if (!retried) {
+      // First failure: retry with cache-busting param
+      setRetried(true)
+    } else {
+      // Second failure: show fallback placeholder
+      setStatus('fallback')
+    }
+  }, [retried])
+
+  const handleLoad = useCallback(() => {
+    setStatus('loaded')
+  }, [])
+
+  if (status === 'fallback') {
+    return (
+      <div className={styles.cardImageFallback}>
+        <img 
+          src={avatarSrc} 
+          alt="" 
+          className={styles.fallbackAvatar}
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+        <span className={styles.fallbackLabel}>{orgRepo}</span>
+      </div>
+    )
+  }
+
+  return (
+    <img 
+      src={retried ? retrySrc : primarySrc} 
+      alt={alt} 
+      className={`${styles.cardImage} ${status === 'loaded' ? styles.cardImageLoaded : ''}`}
+      loading="lazy" 
+      onError={handleError}
+      onLoad={handleLoad}
+    />
+  )
+}
+
 export function GithubLinksView() {
   const [links, setLinks] = useState<GithubLink[]>([])
   const [loading, setLoading] = useState(true)
@@ -82,7 +133,7 @@ export function GithubLinksView() {
             value={selectedGroup} 
             onChange={e => {
               setSelectedGroup(e.target.value)
-              setSelectedFeed('All') // Reset feed when folder changes
+              setSelectedFeed('All')
             }}
           >
             <option value="All">All Folders</option>
@@ -108,7 +159,6 @@ export function GithubLinksView() {
         ) : (
           <div className={styles.grid}>
             {filteredLinks.map((link, idx) => {
-              // Parse Github URLs dynamically
               let orgRepo = link.linkText
               let type = 'Repository'
               let highlight = ''
@@ -130,7 +180,6 @@ export function GithubLinksView() {
                   } else if (parts[2] === 'blob' || parts[2] === 'tree') {
                     type = 'Code'
                     highlight = parts.slice(4).join('/')
-                    // truncate long paths
                     if (highlight.length > 25) highlight = '.../' + highlight.slice(-20)
                   } else if (parts[2] === 'releases') {
                     type = 'Release'
@@ -143,9 +192,7 @@ export function GithubLinksView() {
                 // Ignore parse errors
               }
 
-              const imageUrl = type !== 'Profile' 
-                ? `https://opengraph.githubassets.com/1/${orgRepo}` 
-                : null
+              const showImage = type !== 'Profile'
 
               return (
                 <a 
@@ -157,9 +204,9 @@ export function GithubLinksView() {
                     window.open(link.url, '_blank')
                   }}
                 >
-                  {imageUrl && (
+                  {showImage && (
                     <div className={styles.cardImageContainer}>
-                      <img src={imageUrl} alt={orgRepo} className={styles.cardImage} loading="lazy" />
+                      <RepoPreviewImage orgRepo={orgRepo} alt={orgRepo} />
                     </div>
                   )}
 
