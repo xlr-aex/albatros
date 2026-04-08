@@ -2,15 +2,14 @@
  * @file services/SearchService.ts
  * @description Full-text search over articles using SQLite FTS4.
  *
- * The FTS5 virtual table `articles_fts` indexes title, content_text, and
+ * The FTS4 virtual table `articles_fts` indexes title, content_text, and
  * author.  It uses the "content table" mode so text is not duplicated on disk.
  *
- * Search syntax supported (passed through to FTS5 MATCH):
+ * Search syntax supported (passed through to FTS4 MATCH):
  *   - Simple words: "electron"
  *   - Phrase: "\"electron vite\""
  *   - Prefix: "elect*"
  *   - Boolean: "electron AND NOT react"
- *   - Column filter: "title:electron"
  */
 
 import type { Database } from 'sql.js'

@@ -11,8 +11,9 @@
  * GUIDs:  guid element (RSS) / id element (Atom) / id (JSON Feed).
  *         Falls back to the article link if absent.
  *
- * The parser intentionally does NOT sanitise HTML — that is the responsibility
- * of the caller (SyncEngine) which uses DOMPurify after parsing.
+ * The parser intentionally does NOT sanitise HTML — sanitisation is performed
+ * on the renderer side (ArticleReader.tsx) via DOMPurify before injection
+ * into the DOM.  Raw content_html in the database is untrusted.
  */
 
 import { XMLParser } from 'fast-xml-parser'

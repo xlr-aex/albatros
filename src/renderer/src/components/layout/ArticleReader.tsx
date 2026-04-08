@@ -360,16 +360,49 @@ export function ArticleReader() {
               const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
               const hasNewPlayer = htmlToRender.includes('youtube-player-container')
 
-              // Prevent duplicate Reddit self-text rendering
-              let showRedditSelftext = !!redditSelftext
-              if (redditSelftext && selectedArticle?.content_html) {
-                const strippedBase = (selectedArticle.content_html || '').replace(/<[^>]+>/g, '').trim()
-                const strippedReddit = redditSelftext.replace(/<[^>]+>/g, '').trim()
-                if (strippedReddit.length > 50 && strippedBase.includes(strippedReddit.substring(0, 50))) {
+              // ── Robust Reddit content deduplication ────────────────────────
+              // Normalize: strip HTML, collapse whitespace, lowercase
+              const normalize = (s: string) =>
+                s.replace(/<[^>]+>/g, ' ').replace(/&\w+;/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+
+              let showRedditSelftext = false
+              let useSelftextAsMain = false
+
+              if (redditSelftext) {
+                const normReddit = normalize(redditSelftext)
+                const normBase = normalize(selectedArticle?.content_html || '')
+
+                if (normReddit.length < 10) {
+                  // API selftext is trivial (empty / link-only) — skip it
                   showRedditSelftext = false
-                } else if (strippedBase.length > strippedReddit.length * 0.8 && strippedBase.includes(strippedReddit.substring(0, 20))) {
-                  showRedditSelftext = false
+                } else if (normBase.length < 30) {
+                  // RSS content is trivial — the API selftext is the real content.
+                  // Use it as the main body instead of showing a bubble + empty body.
+                  useSelftextAsMain = true
+                } else {
+                  // Both have content — check for overlap.
+                  // Use 40-char prefix of the shorter text as a fingerprint.
+                  const shorter = normReddit.length < normBase.length ? normReddit : normBase
+                  const longer = normReddit.length < normBase.length ? normBase : normReddit
+                  const probe = shorter.substring(0, Math.min(40, shorter.length))
+
+                  if (longer.includes(probe)) {
+                    // Substantial overlap → they're the same content.
+                    // Prefer API selftext if it's longer/richer. Replace main, don't bubble.
+                    if (normReddit.length > normBase.length * 0.8) {
+                      useSelftextAsMain = true
+                    }
+                    // Otherwise the RSS version is already good — skip the selftext.
+                  } else {
+                    // Genuinely different content → show selftext as supplement
+                    showRedditSelftext = true
+                  }
                 }
+              }
+
+              // When API selftext replaces RSS content, swap the HTML to render
+              if (useSelftextAsMain) {
+                htmlToRender = DOMPurify.sanitize(redditSelftext!, { FORCE_BODY: true })
               }
 
               if (isLoadingArticle && !htmlToRender) {
@@ -387,7 +420,7 @@ export function ArticleReader() {
                     key="reddit-selftext"
                     className="reddit-selftext" 
                     style={{ marginBottom: 24, padding: 16, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', fontSize: 15, lineHeight: 1.6, border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', wordBreak: 'break-word' }}
-                    dangerouslySetInnerHTML={{ __html: redditSelftext! }} 
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(redditSelftext!, { FORCE_BODY: true }) }} 
                   />
                 )}
 
@@ -444,7 +477,10 @@ export function ArticleReader() {
             className={styles.linkPopup}
             role="dialog"
             aria-label="Link options"
-            style={{ top: linkPopup.y, left: linkPopup.x }}
+            style={{
+              top: Math.min(linkPopup.y, window.innerHeight - 100),
+              left: Math.min(linkPopup.x, window.innerWidth - 160),
+            }}
             onKeyDown={e => { if (e.key === 'Escape') setLinkPopup(null) }}
           >
             <button

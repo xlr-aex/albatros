@@ -31,6 +31,9 @@ interface UiStore {
   applySyncUpdate: (status: SyncStatus) => void
 }
 
+// Debounce timer to coalesce rapid sync completions into a single reload
+let _syncReloadTimer: ReturnType<typeof setTimeout> | null = null
+
 export const useUiStore = create<UiStore>((set, _get) => ({
   theme:            'dark',
   searchQuery:      '',
@@ -58,33 +61,28 @@ export const useUiStore = create<UiStore>((set, _get) => ({
       } else {
         ids.delete(status.feedId)
         
-        // When a sync finishes, update the sidebar counters
-        setTimeout(() => {
+        // Debounce: coalesce rapid sync completions into a single reload.
+        // During a batch sync of 50 feeds, this prevents 50 individual reloads.
+        if (_syncReloadTimer) clearTimeout(_syncReloadTimer)
+        _syncReloadTimer = setTimeout(() => {
+          _syncReloadTimer = null
           void useFeedStore.getState().loadFeeds()
 
-          // If the newly synced feed is currently selected, or we are viewing 'all',
-          // gracefully reload the articles so they appear without a restart.
-          // Note: we only auto-reload if the user is on the first page (no cursor),
-          // to avoid stealing their scroll position deep down.
           const sel = useFeedStore.getState().selection
           const artStore = useArticleStore.getState()
           
           if (!artStore.hasMore || artStore.articles.length < 50) {
-            if (sel.type === 'feed' && sel.feedId === status.feedId) {
-              void artStore.loadArticles({ feed_id: status.feedId }, true)
+            if (sel.type === 'feed' && sel.feedId !== undefined) {
+              void artStore.loadArticles({ feed_id: sel.feedId }, true)
             } else if (sel.type === 'all' || sel.type === 'unread') {
               void artStore.loadArticles({
                 unread_only: sel.type === 'unread'
               }, true)
             } else if (sel.type === 'group' && sel.groupId !== undefined) {
-              // Check if the synced feed belongs to the selected group
-              const syncedFeed = useFeedStore.getState().feeds.find(f => f.id === status.feedId)
-              if (syncedFeed?.group_id === sel.groupId) {
-                void artStore.loadArticles({ group_id: sel.groupId }, true)
-              }
+              void artStore.loadArticles({ group_id: sel.groupId }, true)
             }
           }
-        }, 0)
+        }, 500)
       }
       // Keep last 50 status records
       const statuses = [status, ...s.lastSyncStatuses].slice(0, 50)

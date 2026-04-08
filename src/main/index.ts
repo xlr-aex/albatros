@@ -127,7 +127,7 @@ async function bootstrap(): Promise<void> {
   const opmlService     = new OpmlService(feedService)
 
   // ── 3. Sync engine ───────────────────────────────────────────────────────
-  const syncEngine = new SyncEngine(feedService, articleService)
+  const syncEngine = new SyncEngine(feedService, articleService, db)
   scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
 
   // ── 4. IPC ───────────────────────────────────────────────────────────────

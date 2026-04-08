@@ -16,6 +16,7 @@
  */
 
 import { BrowserWindow } from 'electron'
+import type { Database } from 'sql.js'
 import pLimit from 'p-limit'
 import { fetchFeed } from './HttpClient'
 import { parseFeed } from './FeedParser'
@@ -64,11 +65,15 @@ export interface SyncResult {
 
 export class SyncEngine {
   private readonly limiter = pLimit(MAX_CONCURRENT)
+  private readonly db: Database
 
   constructor(
     private readonly feedService: FeedService,
     private readonly articleService: ArticleService,
-  ) {}
+    db: Database,
+  ) {
+    this.db = db
+  }
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -324,11 +329,8 @@ export class SyncEngine {
 
   private insertSyncLog(_feedId: number, skipPersist = false): number {
     try {
-      // Use feedService.db since we're in the same layer
-      // @ts-expect-error accessing protected db
-      const db = this.feedService.db
-      db.run(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`, [_feedId])
-      const res = db.exec('SELECT last_insert_rowid()')
+      this.db.run(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`, [_feedId])
+      const res = this.db.exec('SELECT last_insert_rowid()')
       if (!skipPersist) persistDatabase()
       return Number(res[0].values[0][0])
     } catch {
@@ -346,9 +348,7 @@ export class SyncEngine {
   ): void {
     if (_logId === 0) return
     try {
-      // @ts-expect-error accessing protected db
-      const db = this.feedService.db
-      db.run(
+      this.db.run(
         `UPDATE sync_log SET finished_at = strftime('%s','now'), articles_new = ?, articles_updated = ?, status = ?, error_message = ? WHERE id = ?`,
         [_articlesNew, _articlesUpdated, _status, _error ?? null, _logId],
       )

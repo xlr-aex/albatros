@@ -50,6 +50,19 @@ const MIGRATIONS: Migration[] = [
     name: 'add_article_thumbnail',
     sql: `ALTER TABLE articles ADD COLUMN thumbnail_url TEXT DEFAULT NULL;`,
   },
+  {
+    version: 4,
+    name: 'fix_feeds_updated_at_trigger',
+    sql: `
+      DROP TRIGGER IF EXISTS feeds_updated_at;
+      CREATE TRIGGER IF NOT EXISTS feeds_updated_at
+      AFTER UPDATE ON feeds
+      WHEN old.updated_at = new.updated_at
+      BEGIN
+        UPDATE feeds SET updated_at = strftime('%s','now') WHERE id = new.id;
+      END;
+    `,
+  },
 ]
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

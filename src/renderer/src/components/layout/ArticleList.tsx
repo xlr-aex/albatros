@@ -165,18 +165,6 @@ export function ArticleList() {
     </div>
   )
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className={styles.emptyState}>
-      <span className={styles.emptyIcon}>📭</span>
-      <p>{message}</p>
-    </div>
-  )
-}
-
 function getPanelTitle(selection: ReturnType<typeof useFeedStore.getState>['selection']): string {
   switch (selection.type) {
     case 'all':     return 'All Items'

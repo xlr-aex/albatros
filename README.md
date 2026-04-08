@@ -6,7 +6,7 @@
 
 [![Electron](https://img.shields.io/badge/Electron-34.x-blue?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white)](https://reactjs.org/)
-[![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-FTS4-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Albatros** is a high-performance, privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers like Inoreader or Google Reader.
@@ -21,7 +21,7 @@ Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js
 - **Zero Telemetry**: No tracking, no data collection. Your subscriptions and reading habits stay on your machine.
 - **Local-First Architecture**: Your entire database resides locally. Albatros works perfectly offline with all your downloaded content.
 - **SSRF Network Guards**: Built-in protection against Server-Side Request Forgery, preventing malicious feeds from scanning your local network or localhost.
-- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the ingestion layer, ensuring no malicious scripts reach your renderer.
+- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the rendering layer, ensuring no malicious scripts can be executed.
 
 ### ⚡ Performance at Scale
 - **Virtualization**: Utilizing `@tanstack/react-virtual`, the article list remains buttery smooth (60fps) even with tens of thousands of items.
@@ -29,9 +29,10 @@ Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js
 - **Bandwidth Efficiency**: Full support for **ETag** and **Last-Modified** HTTP headers to avoid re-downloading unchanged feed content.
 
 ### 🔍 Advanced Search & Organization
-- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search) with **Trigram tokenization**, allowing for instant, partial-word matching across your entire library.
+- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search), allowing for instant matching across your entire library.
 - **Logical Grouping**: Organize feeds into custom folders with aggregate unread counts.
 - **Contextual Views**: Dedicated "Unread", "Starred", "Today", and "Saved" views to keep your focus where it matters.
+- **Reddit Native Comments**: Automatically fetch and render Reddit comments for posts directly inside the article reader.
 
 ---
 
@@ -60,7 +61,7 @@ Albatros is designed for "power readers." Almost every action is mapped to a key
 
 Albatros follows a strict separation of concerns to maximize security and stability:
 
-- **Main Process**: Handles the SQLite database (sql.js), the Background Sync Engine, and secure networking via `undici`.
+- **Main Process**: Handles the SQLite database (sql.js), the Background Sync Engine, and secure networking via native `fetch`.
 - **Renderer Process**: A React 19 application using **Zustand** for ultra-fast state management and **CSS Modules** for scoped, performant styling.
 - **Preload Script**: Acts as a secure, typed bridge between the two processes, exposing no raw Node.js APIs to the frontend.
 

@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS articles (
   -- Full HTML body, sanitised at write time (DOMPurify in the sync engine)
   content_html   TEXT,
 
-  -- Plain-text version of the content, used exclusively by FTS5 for search
+  -- Plain-text version of the content, used exclusively by FTS4 for search
   content_text   TEXT,
 
   -- 160-char excerpt shown in the article list panel
@@ -118,9 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_articles_pub_global  ON articles (published_at DE
 
 -- ─── Full-Text Search (FTS4) ──────────────────────────────────────────────────
 -- Virtual table that indexes title, content_text, and author.
--- Uses "content tables" so the actual text is NOT duplicated — FTS5 reads
+-- Uses "content tables" so the actual text is NOT duplicated — FTS4 reads
 -- from the parent `articles` table via content_rowid.
--- Trigram tokeniser enables partial-word matching ("quel" matches "quelque").
+-- Note: FTS4 uses a simpler tokeniser than FTS5; partial-word matching is limited.
 
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts4 (
   title,

@@ -64,8 +64,11 @@ BEGIN
 END;
 
 -- Also update feeds.updated_at whenever a column changes.
+-- Guard: only fire when updated_at was NOT already explicitly set by the
+-- statement, preventing infinite recursion (trigger updating → trigger firing).
 CREATE TRIGGER IF NOT EXISTS feeds_updated_at
 AFTER UPDATE ON feeds
+WHEN old.updated_at = new.updated_at
 BEGIN
   UPDATE feeds SET updated_at = strftime('%s','now') WHERE id = new.id;
 END;

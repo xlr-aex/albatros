@@ -142,6 +142,12 @@ export async function fetchFeed(
   }
 
   // ── Read body with size cap ─────────────────────────────────────────────
+  // Pre-check Content-Length to avoid downloading excessively large feeds into memory.
+  const contentLength = response.headers.get('content-length')
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes, Content-Length: ${contentLength}): ${url}`)
+  }
+
   const bodyText = await response.text()
   if (Buffer.byteLength(bodyText, 'utf8') > MAX_BODY_BYTES) {
     throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes): ${url}`)

@@ -53,6 +53,7 @@ interface ArticleStore {
     group_id?: number
     unread_only?: boolean
     saved_only?: boolean
+    today_only?: boolean
     searchQuery?: string
   }, silent?: boolean) => Promise<void>
 

@@ -217,7 +217,6 @@ export function Sidebar() {
   const [isDragOverRoot, setIsDragOverRoot] = useState(false)
   const rootDragCounter = useRef(0)
 
-  // Subscriptionst [feedPropertiesOpen, setFeedPropertiesOpen] = useState<number | null>(null)
   const [feedPropertiesOpen, setFeedPropertiesOpen] = useState<number | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ feedId: number; x: number; y: number } | null>(null)
   const [groupCtxMenu, setGroupCtxMenu] = useState<{
@@ -237,9 +236,9 @@ export function Sidebar() {
     const q = searchQuery.trim()
     const timer = setTimeout(() => {
       if (q) {
-        setSelection({ type: 'search' as unknown as 'all' })
+        setSelection({ type: 'search' })
         void loadArticles({ searchQuery: q })
-      } else if (searchQuery === '' && selection.type === ('search' as unknown)) {
+      } else if (searchQuery === '' && selection.type === 'search') {
         setSelection({ type: 'all' })
         void loadArticles({})
       }
@@ -314,6 +313,7 @@ export function Sidebar() {
     void loadArticles({
       unread_only: type === 'unread',
       saved_only: type === 'saved',
+      today_only: type === 'today',
     })
   }
 

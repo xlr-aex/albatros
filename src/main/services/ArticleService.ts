@@ -67,6 +67,7 @@ export interface ArticleListParams {
   group_id?: number // Filter to all feeds within a group
   unread_only?: boolean // If true, only return unread articles
   saved_only?: boolean // If true, only return saved articles
+  today_only?: boolean // If true, only return articles from the last 24h
   /** Cursor: last seen published_at value (for pagination) */
   cursor_published_at?: number
   /** Cursor: last seen article id (tie-breaker) */
@@ -100,6 +101,7 @@ function rowToArticle(columns: string[], row: SqlValue[]): Article {
   return {
     ...(o as unknown as Article),
     is_read: o['is_read'] === 1,
+    is_starred: o['is_starred'] === 1,
     is_saved: o['is_saved'] === 1,
   }
 }
@@ -126,12 +128,22 @@ export class ArticleService {
   /**
    * One-time structural migration designed to retroactively flag orphaned Subreddit comments
    * natively inside SQLite via NodeJS Regex mapping, hiding them from the chronological view.
+   * Uses a settings flag so it only runs once, not on every startup.
    */
   private migrateRedditComments() {
+    // Check if we've already run this migration
+    const flag = this.db.exec("SELECT value FROM settings WHERE key = '_reddit_comments_migrated'")
+    if (flag.length && flag[0].values.length && flag[0].values[0][0] === '1') return
+
     const rows = this.db.exec(
       `SELECT id, url FROM articles WHERE url LIKE '%reddit.com%' AND (enclosure_type IS NULL OR enclosure_type != 'reddit-comment')`,
     )
-    if (!rows.length || !rows[0].values.length) return
+    if (!rows.length || !rows[0].values.length) {
+      // Mark as done even if nothing to migrate
+      this.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')")
+      persistDatabase()
+      return
+    }
 
     let updated = false
     this.db.run('BEGIN TRANSACTION')
@@ -141,6 +153,7 @@ export class ArticleService {
         updated = true
       }
     }
+    this.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')")
     this.db.run('COMMIT')
 
     if (updated) {
@@ -174,6 +187,11 @@ export class ArticleService {
     }
     if (params.saved_only) {
       conditions.push('a.is_saved = 1')
+    }
+    if (params.today_only) {
+      const oneDayAgo = Math.floor(Date.now() / 1000) - 86400
+      conditions.push('a.published_at >= ?')
+      bindings.push(oneDayAgo)
     }
 
     // ── Cursor ─────────────────────────────────────────────────────────────
@@ -338,14 +356,6 @@ export class ArticleService {
           existingId,
         ],
       )
-
-      // Force update thumbnail if we have one and current is null
-      if (input.thumbnail_url) {
-        this.db.run(
-          `UPDATE articles SET thumbnail_url = ? WHERE id = ? AND thumbnail_url IS NULL`,
-          [input.thumbnail_url, existingId],
-        )
-      }
 
       return { id: existingId, isNew: false }
     }
