@@ -31,6 +31,7 @@ import { ManageFeedsModal } from '../feed/ManageFeedsModal'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { HighlightText } from './HighlightText'
 import styles from './Sidebar.module.css'
+import logo from '../../assets/logo.png'
 
 function getFaviconFallbackUrl(feed: Feed): string {
   try {
@@ -337,7 +338,9 @@ export function Sidebar() {
     <aside className={styles.sidebar}>
       {/* Drag region for frameless window */}
       <div className={`${styles.header} drag-region`}>
-        <span className={styles.logo}>◆ Flux</span>
+        <div className={styles.logo}>
+          <img src={logo} className={styles.logoImg} alt="Albatros" />
+        </div>
         <div className={styles.actions}>
           <button
             title="Sync All Feeds"

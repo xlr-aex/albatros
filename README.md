@@ -1,4 +1,8 @@
-# 🦢 Albatros RSS Reader
+<div align="center">
+  <img src="docs/assets/logo.png" alt="Albatros Logo" width="160" />
+
+  # Albatros RSS Reader
+</div>
 
 [![Electron](https://img.shields.io/badge/Electron-34.x-blue?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white)](https://reactjs.org/)

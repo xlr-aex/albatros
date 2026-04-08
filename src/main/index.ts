@@ -60,6 +60,7 @@ function createWindow(): BrowserWindow {
     minHeight:       600,
     backgroundColor: '#0f1117', // Dark background to avoid white flash
     titleBarStyle:   'hiddenInset',
+    icon:            path.join(__dirname, '../../resources/icon.png'),
     webPreferences:  {
       preload:          path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,    // Required for security
