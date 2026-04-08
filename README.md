@@ -1,83 +1,115 @@
-# Albatros RSS Reader
+# 🦢 Albatros RSS Reader
 
-A fast, privacy-focused desktop RSS/Atom/JSON feed reader built with Electron, React, and SQLite.
+[![Electron](https://img.shields.io/badge/Electron-34.x-blue?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white)](https://reactjs.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Inspired by the classical layout of Inoreader, Albatros offers a powerful 3-pane interface optimized for heavy reading, keyboard navigation, and local-first data ownership.
+**Albatros** is a high-performance, privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers like Inoreader or Google Reader.
 
-## Features
+Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js WASM)**, Albatros offers a seamless bridge between the traditional web and a modern, offline-first desktop application.
 
-- **Local-First Architecture**: All feeds, articles, and reading states are stored in a local SQLite database (`sql.js` WASM compile).
-- **Format Support**: Automatically detects and parses RSS 2.0, Atom 1.0, and JSON Feed 1.1.
-- **Smart Polling**: Adaptive sync engine that backs off failing/quiet feeds and scales up actively publishing ones, saving bandwidth.
-- **SSRF Protection**: Built-in network guards to prevent malicious feeds from scanning your local network or localhost.
-- **Privacy Native**: Sanitizes all incoming HTML via DOMPurify instantly before render. No trackers, no telemetry.
-- **Full Text Search**: Instant searching across all downloaded articles via SQLite FTS5.
-- **Infinite Scroll Reading**: Virtualized article lists capable of rendering thousands of items at 60fps.
-- **OPML Workflows**: Standard OPML 2.0 import and export for mass subscription management.
+---
 
-## Project Structure
+## 🚀 Key Features
 
-This project follows a strict strict separation of concerns, generated via `electron-vite`:
+### 🛡️ Privacy & Security First
+- **Zero Telemetry**: No tracking, no data collection. Your subscriptions and reading habits stay on your machine.
+- **Local-First Architecture**: Your entire database resides locally. Albatros works perfectly offline with all your downloaded content.
+- **SSRF Network Guards**: Built-in protection against Server-Side Request Forgery, preventing malicious feeds from scanning your local network or localhost.
+- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the ingestion layer, ensuring no malicious scripts reach your renderer.
 
-```
-albatros/
-├── src/
-│   ├── main/          # Node.js backend (Sync Engine, SQLite, IPC handlers)
-│   ├── preload/       # Security bridge (window.api)
-│   └── renderer/      # React 19 Frontend (Zustand, CSS Modules)
-├── docs/              # Architecture references
-└── package.json       # Scripts & dependencies
-```
+### ⚡ Performance at Scale
+- **Virtualization**: Utilizing `@tanstack/react-virtual`, the article list remains buttery smooth (60fps) even with tens of thousands of items.
+- **Smart Sync Engine**: An adaptive polling system that scales fetch intervals based on update frequency and handles exponential backoff for failing feeds.
+- **Bandwidth Efficiency**: Full support for **ETag** and **Last-Modified** HTTP headers to avoid re-downloading unchanged feed content.
 
-## Documentation
+### 🔍 Advanced Search & Organization
+- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search) with **Trigram tokenization**, allowing for instant, partial-word matching across your entire library.
+- **Logical Grouping**: Organize feeds into custom folders with aggregate unread counts.
+- **Contextual Views**: Dedicated "Unread", "Starred", "Today", and "Saved" views to keep your focus where it matters.
 
-For a detailed breakdown of how Albatros operates under the hood, refer to the following internal guides:
+---
 
-1. [Architecture Overview](docs/architecture.md)
-2. [Database Schema & Triggers](docs/database.md)
-3. [Sync Engine & Parsing](docs/sync-engine.md)
-4. [IPC API Bridge](docs/api-ipc.md)
+## ⌨️ Productivity & UX
 
-## Development Setup
+Albatros is designed for "power readers." Almost every action is mapped to a keyboard shortcut for a mouse-free experience.
+
+### Keyboard Shortcuts
+
+| Category | Command | Key |
+|---|---|---|
+| **Navigation** | Next Article | `j` or `↓` |
+| | Previous Article | `k` or `↑` |
+| | Select Current | `Enter` / `Space` |
+| **Actions** | Toggle Read/Unread | `m` |
+| | Toggle Starred | `s` |
+| | Open in Browser | `v` |
+| | Share/Link Popup | `l` |
+| **System** | Toggle Search | `/` |
+| | Focus Sidebar | `q` |
+| | Close Modal/Popup | `Esc` |
+
+---
+
+## 🛠️ Technical Architecture
+
+Albatros follows a strict separation of concerns to maximize security and stability:
+
+- **Main Process**: Handles the SQLite database (sql.js), the Background Sync Engine, and secure networking via `undici`.
+- **Renderer Process**: A React 19 application using **Zustand** for ultra-fast state management and **CSS Modules** for scoped, performant styling.
+- **Preload Script**: Acts as a secure, typed bridge between the two processes, exposing no raw Node.js APIs to the frontend.
+
+### Tech Stack
+- **Runtime**: Electron 34, Node.js 22.
+- **Frontend**: React 19, Radix UI Primitives, Lucide Icons.
+- **Database**: SQLite (WASM via `sql.js`) with custom Triggers and FTS4.
+- **Tooling**: Vite (`electron-vite`), TypeScript, Vitest (Unit), Playwright (E2E).
+
+---
+
+## 📦 Getting Started
 
 ### Prerequisites
-
-- Node.js 20+
-- npm 9+
+- Node.js **20+**
+- npm **9+**
 
 ### Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-### Running Locally
-
-To start the Vite dev server and launch the Electron app in development mode:
-
 ```bash
+# Clone the repository
+git clone https://github.com/xlr-aex/albatros.git
+cd albatros
+
+# Install dependencies
+npm install
+```
+
+### Development
+```bash
+# Start the dev server & Electron app
 npm run dev
 ```
 
-### Building for Production
-
-To compile TypeScript, bundle with Vite, and build the Electron executables for your current platform:
-
+### Production Build
 ```bash
+# Build for the current platform
 npm run build
 ```
 
-The compiled binaries will be placed in the `dist/` and `out/` directories depending on the builder config.
+---
 
-## Tech Stack
+## 📖 Internal Documentation
 
-- **Core**: Electron, TypeScript, Node.js (`undici` for networking).
-- **Frontend**: React 19, Zustand (State), Radix UI (Primitives), `@tanstack/react-virtual` (Performance).
-- **Backend/Storage**: `sql.js` (WebAssembly SQLite), `fast-xml-parser`, `dompurify`.
-- **Tooling**: Vite (`electron-vite`), ESLint, Prettier.
+For developers or advanced users wanting to dive deeper into the implementation:
 
-## License
+- 🏗️ **[Architecture Overview](docs/architecture.md)** — Detailed IPC and process mapping. (Coming Soon)
+- 🔌 **[IPC API Bridge](docs/api-ipc.md)** — Communication protocols between Main and Renderer.
+- 🗄️ **[Database Schema](docs/database.md)** — Relational design and search triggers.
+- 🔄 **[Sync Engine](docs/sync-engine.md)** — Polling logic and parser architecture.
+- 🎨 **[UI/UX Design](docs/ui-ux.md)** — Design tokens and accessibility patterns.
 
-MIT License
+---
+
+## 📜 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
