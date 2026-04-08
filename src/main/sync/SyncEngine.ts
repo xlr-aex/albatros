@@ -107,163 +107,185 @@ export class SyncEngine {
   // ── Core sync logic ───────────────────────────────────────────────────────
 
   private async syncOne(feed: Feed, skipPersist = false): Promise<SyncResult> {
-    // Write a "running" log entry
     const logId = this.insertSyncLog(feed.id, skipPersist)
     this.emitStatus({ feedId: feed.id, status: 'syncing' })
 
-    try {
-      // ── Fetch ──────────────────────────────────────────────────────────
-      const response = await fetchFeed(feed.url, feed.last_etag, feed.last_modified)
+    const MAX_ATTEMPTS = 3
+    const RETRY_DELAY_MS = 2000
+    let lastError: Error | null = null
 
-      // ── 304 Not Modified ───────────────────────────────────────────────
-      if (response.status === 304) {
-        const nextFetch = this.adaptiveInterval(feed, 0, false)
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`[SyncEngine] Retrying feed ${feed.id} (attempt ${attempt}/${MAX_ATTEMPTS})...`)
+        }
+
+        // ── Fetch ──────────────────────────────────────────────────────────
+        // On the final attempt, we force a full reload by ignoring ETag and Last-Modified.
+        // This resolves cases where buggy servers return empty 200/304 incorrectly.
+        const useCache = attempt < MAX_ATTEMPTS
+        const response = await fetchFeed(
+          feed.url, 
+          useCache ? feed.last_etag : null, 
+          useCache ? feed.last_modified : null
+        )
+
+        // ── 304 Not Modified ───────────────────────────────────────────────
+        if (response.status === 304) {
+          const nextFetch = this.adaptiveInterval(feed, 0, false)
+          this.feedService.updateAfterSync(
+            {
+              id: feed.id,
+              last_etag: response.etag ?? feed.last_etag,
+              last_modified: response.lastModified ?? feed.last_modified,
+              next_fetch_at: nextFetch,
+              error_count: 0,
+            },
+            skipPersist,
+          )
+          this.finishSyncLog(logId, 0, 0, 'success', undefined, skipPersist)
+          this.emitStatus({ feedId: feed.id, status: 'not_modified' })
+          return { feedId: feed.id, articlesNew: 0, articlesUpdated: 0, status: 'not_modified' }
+        }
+
+        // ── Parse ──────────────────────────────────────────────────────────
+        let parsed = parseFeed(response.body, response.contentType)
+
+        // ── Fallback RSS <-> ATOM for incomplete scraping ──────────────────
+        const isContentMissing =
+          parsed.articles.length === 0 ||
+          parsed.articles.every(
+            a => !a.content_html && !a.content_text && (!a.excerpt || a.excerpt.length < 50),
+          )
+
+        if (isContentMissing) {
+          let fallbackUrl: string | null = null
+          if (feed.url.endsWith('.rss')) fallbackUrl = feed.url.replace(/\.rss$/, '.atom')
+          else if (feed.url.endsWith('.atom')) fallbackUrl = feed.url.replace(/\.atom$/, '.rss')
+          else if (feed.url.endsWith('/rss')) fallbackUrl = feed.url.replace(/\/rss$/, '/atom')
+          else if (feed.url.endsWith('/atom')) fallbackUrl = feed.url.replace(/\/atom$/, '/rss')
+
+          if (fallbackUrl) {
+            try {
+              const fbRes = await fetchFeed(fallbackUrl)
+              if (fbRes.status === 200) {
+                const fbParsed = parseFeed(fbRes.body, fbRes.contentType)
+                if (fbParsed.articles.length > 0) {
+                  parsed = fbParsed
+                }
+              }
+            } catch (fallbackErr) { /* ignore */ }
+          }
+        }
+
+        // If even after fallback it is still empty, and we have retries left, then retry
+        if (parsed.articles.length === 0) {
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+            continue
+          } else {
+            // After 3 attempts (including a forced fresh one), it is truly empty
+            throw new Error('Feed has 0 articles (even after forced reload)')
+          }
+        }
+
+        // Update feed metadata from parsed feed info
+        const faviconUrl = getFaviconUrl(parsed.meta.site_url, feed.url)
+        if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
+          this.feedService.update(
+            feed.id,
+            {
+              title: parsed.meta.title ?? undefined,
+              site_url: parsed.meta.site_url ?? undefined,
+              favicon_url: faviconUrl ?? undefined,
+            },
+            skipPersist,
+          )
+        }
+
+        // ── Upsert articles ────────────────────────────────────────────────
+        let articlesNew = 0
+        for (const article of parsed.articles) {
+          if (!article.guid) continue
+          const { isNew } = this.articleService.upsert({
+            feed_id: feed.id,
+            guid: article.guid,
+            url: article.url ?? undefined,
+            title: article.title ?? undefined,
+            author: article.author ?? undefined,
+            content_html: article.content_html ?? undefined,
+            content_text: article.content_text ?? undefined,
+            excerpt: article.excerpt ?? undefined,
+            enclosure_url: article.enclosure_url ?? undefined,
+            enclosure_type: article.enclosure_type ?? undefined,
+            word_count: article.word_count ?? undefined,
+            published_at: article.published_at ?? undefined,
+            thumbnail_url: article.thumbnail_url ?? undefined,
+          })
+          if (isNew) articlesNew++
+        }
+
+        if (!skipPersist) persistDatabase()
+
+        // ── Update feed metadata ───────────────────────────────────────────
+        const nextFetch = this.adaptiveInterval(feed, articlesNew, true)
         this.feedService.updateAfterSync(
           {
             id: feed.id,
-            last_etag: response.etag ?? feed.last_etag,
-            last_modified: response.lastModified ?? feed.last_modified,
+            last_etag: response.etag,
+            last_modified: response.lastModified,
             next_fetch_at: nextFetch,
-            error_count: 0,
+            error_count: 0, 
           },
           skipPersist,
         )
-        this.finishSyncLog(logId, 0, 0, 'success', undefined, skipPersist)
-        this.emitStatus({ feedId: feed.id, status: 'not_modified' })
-        return { feedId: feed.id, articlesNew: 0, articlesUpdated: 0, status: 'not_modified' }
-      }
 
-      // ── Parse ──────────────────────────────────────────────────────────
-      let parsed = parseFeed(response.body, response.contentType)
+        this.finishSyncLog(logId, articlesNew, 0, 'success', undefined, skipPersist)
+        this.emitStatus({ feedId: feed.id, status: 'success', articlesNew })
+        return { feedId: feed.id, articlesNew, articlesUpdated: 0, status: 'success' }
 
-      // ── Fallback RSS <-> ATOM for incomplete scraping ──────────────────
-      // If every article is missing extensive content (or the feed is inexplicably empty),
-      // we guess the alternative feed format URL to scrape for richer data.
-      const isContentMissing =
-        parsed.articles.length === 0 ||
-        parsed.articles.every(
-          a => !a.content_html && !a.content_text && (!a.excerpt || a.excerpt.length < 50),
-        )
-
-      if (isContentMissing) {
-        let fallbackUrl: string | null = null
-        if (feed.url.endsWith('.rss')) fallbackUrl = feed.url.replace(/\.rss$/, '.atom')
-        else if (feed.url.endsWith('.atom')) fallbackUrl = feed.url.replace(/\.atom$/, '.rss')
-        else if (feed.url.endsWith('/rss')) fallbackUrl = feed.url.replace(/\/rss$/, '/atom')
-        else if (feed.url.endsWith('/atom')) fallbackUrl = feed.url.replace(/\/atom$/, '/rss')
-
-        if (fallbackUrl) {
-          try {
-            const fbRes = await fetchFeed(fallbackUrl)
-            if (fbRes.status === 200) {
-              const fbParsed = parseFeed(fbRes.body, fbRes.contentType)
-              // If the fallback feed successfully parsed rich articles, ruthlessly overwrite the primary feed
-              if (fbParsed.articles.length > 0) {
-                parsed = fbParsed
-              }
-            }
-          } catch (fallbackErr) {
-            // Silently ignore fallback fetch failures and proceed with original parsed data
-          }
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+        // Network/HTTP error: retry up to MAX_ATTEMPTS
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+          continue
         }
       }
+    }
 
-      // Update feed metadata from parsed feed info (title, site_url, etc.)
-      const faviconUrl = getFaviconUrl(parsed.meta.site_url, feed.url)
+    // If we reach here, all attempts failed
+    const message = lastError?.message || 'Sync failed'
+    console.error(`[SyncEngine] Persistent error for feed ${feed.id}:`, message)
+    
+    const newErrorCount = (feed.error_count ?? 0) + 1
+    const backoff = Math.min(INTERVAL.DEFAULT * Math.pow(2, newErrorCount), INTERVAL.BACKOFF_MAX)
+    const nextFetch = Math.floor(Date.now() / 1000) + backoff
 
-      if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
-        this.feedService.update(
-          feed.id,
-          {
-            title: parsed.meta.title ?? undefined,
-            site_url: parsed.meta.site_url ?? undefined,
-            favicon_url: faviconUrl ?? undefined,
-          },
-          skipPersist,
-        )
-      }
+    this.feedService.updateAfterSync(
+      {
+        id: feed.id,
+        last_etag: feed.last_etag,
+        last_modified: feed.last_modified,
+        next_fetch_at: nextFetch,
+        error_count: newErrorCount,
+      },
+      skipPersist,
+    )
 
-      // ── Upsert articles ────────────────────────────────────────────────
-      let articlesNew = 0
-      for (const article of parsed.articles) {
-        if (!article.guid) continue
+    if (newErrorCount >= 10) {
+      this.feedService.update(feed.id, { is_active: false }, skipPersist)
+    }
 
-        const { isNew } = this.articleService.upsert({
-          feed_id: feed.id,
-          guid: article.guid,
-          url: article.url ?? undefined,
-          title: article.title ?? undefined,
-          author: article.author ?? undefined,
-          content_html: article.content_html ?? undefined,
-          content_text: article.content_text ?? undefined,
-          excerpt: article.excerpt ?? undefined,
-          enclosure_url: article.enclosure_url ?? undefined,
-          enclosure_type: article.enclosure_type ?? undefined,
-          word_count: article.word_count ?? undefined,
-          published_at: article.published_at ?? undefined,
-          thumbnail_url: article.thumbnail_url ?? undefined,
-        })
-        if (isNew) articlesNew++
-      }
+    this.finishSyncLog(logId, 0, 0, 'error', message, skipPersist)
+    this.emitStatus({ feedId: feed.id, status: 'error', error: message })
 
-      // Persist all article inserts in a single flush
-      if (!skipPersist) persistDatabase()
-
-      // ── Update feed metadata ───────────────────────────────────────────
-      const nextFetch = this.adaptiveInterval(feed, articlesNew, true)
-      this.feedService.updateAfterSync(
-        {
-          id: feed.id,
-          last_etag: response.etag,
-          last_modified: response.lastModified,
-          next_fetch_at: nextFetch,
-          error_count: 0, // Reset error counter on success
-        },
-        skipPersist,
-      )
-
-      this.finishSyncLog(logId, articlesNew, 0, 'success', undefined, skipPersist)
-      this.emitStatus({ feedId: feed.id, status: 'success', articlesNew })
-
-      return { feedId: feed.id, articlesNew, articlesUpdated: 0, status: 'success' }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[SyncEngine] Error saving feed:', feed.id, message)
-      const newErrorCount = (feed.error_count ?? 0) + 1
-
-      // Exponential backoff: 2^errorCount * defaultInterval, capped at BACKOFF_MAX
-      const backoff = Math.min(INTERVAL.DEFAULT * Math.pow(2, newErrorCount), INTERVAL.BACKOFF_MAX)
-      const nextFetch = Math.floor(Date.now() / 1000) + backoff
-
-      this.feedService.updateAfterSync(
-        {
-          id: feed.id,
-          last_etag: feed.last_etag,
-          last_modified: feed.last_modified,
-          next_fetch_at: nextFetch,
-          error_count: newErrorCount,
-        },
-        skipPersist,
-      )
-
-      // Auto-disable feed after 10 consecutive errors
-      if (newErrorCount >= 10) {
-        this.feedService.update(feed.id, { is_active: false }, skipPersist)
-        console.error(
-          `[SyncEngine] Feed ${feed.id} disabled after ${newErrorCount} consecutive errors`,
-        )
-      }
-
-      this.finishSyncLog(logId, 0, 0, 'error', message, skipPersist)
-      this.emitStatus({ feedId: feed.id, status: 'error', error: message })
-
-      return {
-        feedId: feed.id,
-        articlesNew: 0,
-        articlesUpdated: 0,
-        status: 'error',
-        error: message,
-      }
+    return {
+      feedId: feed.id,
+      articlesNew: 0,
+      articlesUpdated: 0,
+      status: 'error',
+      error: message,
     }
   }
 

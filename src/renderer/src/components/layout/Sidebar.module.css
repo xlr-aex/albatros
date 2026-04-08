@@ -341,6 +341,26 @@
   animation: spin 1s linear infinite;
 }
 
+.errorIcon {
+  color: #ef4444;
+  cursor: help;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: errorPulse 2s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.syncSpin {
+  animation: spin 1s linear infinite;
+  transform-origin: center;
+}
+
 /* Footer */
 .footer {
   padding: var(--space-4) var(--space-6);

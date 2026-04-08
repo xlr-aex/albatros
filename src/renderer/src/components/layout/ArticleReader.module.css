@@ -38,7 +38,13 @@
 }
 .feedName { color: var(--brand-400); font-weight: var(--weight-medium); }
 .dot { color: var(--text-muted); }
-.date, .readTime { color: var(--text-muted); }
+.feedFavicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+.date { color: var(--text-muted); }
 
 .title {
   font-size: var(--text-2xl);

@@ -16,6 +16,8 @@ import { persistDatabase } from '../db/connection'
 export interface Article {
   id: number
   feed_id: number
+  feed_title: string | null
+  feed_favicon: string | null
   guid: string
   url: string | null
   title: string | null
@@ -211,7 +213,16 @@ export class ArticleService {
 
   /** Returns the full article (including HTML content) for the reader pane. */
   getById(id: number): Article | null {
-    const result = this.db.exec('SELECT * FROM articles WHERE id = ?', [id])
+    const sql = `
+      SELECT
+        a.*,
+        f.title AS feed_title,
+        f.favicon_url AS feed_favicon
+      FROM articles a
+      JOIN feeds f ON f.id = a.feed_id
+      WHERE a.id = ?
+    `
+    const result = this.db.exec(sql, [id])
     if (!result.length || !result[0].values.length) return null
     const article = rowToArticle(result[0].columns, result[0].values[0])
 
@@ -223,7 +234,13 @@ export class ArticleService {
       if (baseMatch) {
         const baseUrl = baseMatch[1]
         const commentRows = this.db.exec(
-          `SELECT * FROM articles WHERE feed_id = ? AND enclosure_type = 'reddit-comment'`,
+          `SELECT
+             a.*,
+             f.title AS feed_title,
+             f.favicon_url AS feed_favicon
+           FROM articles a
+           JOIN feeds f ON f.id = a.feed_id
+           WHERE a.feed_id = ? AND a.enclosure_type = 'reddit-comment'`,
           [article.feed_id],
         )
         if (commentRows.length && commentRows[0].values.length) {

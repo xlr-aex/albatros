@@ -2,12 +2,16 @@
 const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
+const adblockerElectron = require("@cliqz/adblocker-electron");
+const fetch$1 = require("cross-fetch");
 const initSqlJs = require("sql.js");
 const fastXmlParser = require("fast-xml-parser");
 const pLimit = require("p-limit");
 const url = require("url");
 const getDbPath = () => path.join(electron.app.getPath("userData"), "albatros.db");
 let _db = null;
+let _persistTimeout = null;
+const PERSIST_DEBOUNCE_MS = 1e4;
 async function getDatabase() {
   if (_db) return _db;
   const dataDir = electron.app.getPath("userData");
@@ -25,12 +29,27 @@ async function getDatabase() {
 }
 function persistDatabase() {
   if (!_db) return;
+  if (_persistTimeout) return;
+  _persistTimeout = setTimeout(() => {
+    persistDatabaseNow();
+  }, PERSIST_DEBOUNCE_MS);
+}
+function persistDatabaseNow() {
+  if (!_db) return;
+  if (_persistTimeout) {
+    clearTimeout(_persistTimeout);
+    _persistTimeout = null;
+  }
   const data = _db.export();
-  fs.writeFileSync(getDbPath(), Buffer.from(data));
+  try {
+    fs.writeFileSync(getDbPath(), Buffer.from(data));
+  } catch (err) {
+    console.error("[Database] Failed to persist:", err);
+  }
 }
 function closeDatabase() {
   if (_db) {
-    persistDatabase();
+    persistDatabaseNow();
     _db.close();
     _db = null;
   }
@@ -531,6 +550,14 @@ class FeedService {
     `);
     persistDatabase();
   }
+  /**
+   * Resets error_count to 0 for all feeds.
+   * Typically called at boot to avoid showing stale errors before a fresh sync attempt.
+   */
+  resetErrorCounts() {
+    this.db.run("UPDATE feeds SET error_count = 0");
+    persistDatabase();
+  }
 }
 function rowToArticle(columns, row) {
   const o = {};
@@ -632,7 +659,16 @@ class ArticleService {
   }
   /** Returns the full article (including HTML content) for the reader pane. */
   getById(id) {
-    const result = this.db.exec("SELECT * FROM articles WHERE id = ?", [id]);
+    const sql = `
+      SELECT
+        a.*,
+        f.title AS feed_title,
+        f.favicon_url AS feed_favicon
+      FROM articles a
+      JOIN feeds f ON f.id = a.feed_id
+      WHERE a.id = ?
+    `;
+    const result = this.db.exec(sql, [id]);
     if (!result.length || !result[0].values.length) return null;
     const article = rowToArticle(result[0].columns, result[0].values[0]);
     if (article.url && article.url.includes("reddit.com/r/")) {
@@ -642,7 +678,13 @@ class ArticleService {
       if (baseMatch) {
         const baseUrl = baseMatch[1];
         const commentRows = this.db.exec(
-          `SELECT * FROM articles WHERE feed_id = ? AND enclosure_type = 'reddit-comment'`,
+          `SELECT
+             a.*,
+             f.title AS feed_title,
+             f.favicon_url AS feed_favicon
+           FROM articles a
+           JOIN feeds f ON f.id = a.feed_id
+           WHERE a.feed_id = ? AND a.enclosure_type = 'reddit-comment'`,
           [article.feed_id]
         );
         if (commentRows.length && commentRows[0].values.length) {
@@ -1642,127 +1684,149 @@ class SyncEngine {
   async syncOne(feed, skipPersist = false) {
     const logId = this.insertSyncLog(feed.id, skipPersist);
     this.emitStatus({ feedId: feed.id, status: "syncing" });
-    try {
-      const response = await fetchFeed(feed.url, feed.last_etag, feed.last_modified);
-      if (response.status === 304) {
-        const nextFetch2 = this.adaptiveInterval(feed, 0, false);
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 2e3;
+    let lastError = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`[SyncEngine] Retrying feed ${feed.id} (attempt ${attempt}/${MAX_ATTEMPTS})...`);
+        }
+        const useCache = attempt < MAX_ATTEMPTS;
+        const response = await fetchFeed(
+          feed.url,
+          useCache ? feed.last_etag : null,
+          useCache ? feed.last_modified : null
+        );
+        if (response.status === 304) {
+          const nextFetch3 = this.adaptiveInterval(feed, 0, false);
+          this.feedService.updateAfterSync(
+            {
+              id: feed.id,
+              last_etag: response.etag ?? feed.last_etag,
+              last_modified: response.lastModified ?? feed.last_modified,
+              next_fetch_at: nextFetch3,
+              error_count: 0
+            },
+            skipPersist
+          );
+          this.finishSyncLog(logId, 0, 0, "success", void 0, skipPersist);
+          this.emitStatus({ feedId: feed.id, status: "not_modified" });
+          return { feedId: feed.id, articlesNew: 0, articlesUpdated: 0, status: "not_modified" };
+        }
+        let parsed = parseFeed(response.body, response.contentType);
+        const isContentMissing = parsed.articles.length === 0 || parsed.articles.every(
+          (a) => !a.content_html && !a.content_text && (!a.excerpt || a.excerpt.length < 50)
+        );
+        if (isContentMissing) {
+          let fallbackUrl = null;
+          if (feed.url.endsWith(".rss")) fallbackUrl = feed.url.replace(/\.rss$/, ".atom");
+          else if (feed.url.endsWith(".atom")) fallbackUrl = feed.url.replace(/\.atom$/, ".rss");
+          else if (feed.url.endsWith("/rss")) fallbackUrl = feed.url.replace(/\/rss$/, "/atom");
+          else if (feed.url.endsWith("/atom")) fallbackUrl = feed.url.replace(/\/atom$/, "/rss");
+          if (fallbackUrl) {
+            try {
+              const fbRes = await fetchFeed(fallbackUrl);
+              if (fbRes.status === 200) {
+                const fbParsed = parseFeed(fbRes.body, fbRes.contentType);
+                if (fbParsed.articles.length > 0) {
+                  parsed = fbParsed;
+                }
+              }
+            } catch (fallbackErr) {
+            }
+          }
+        }
+        if (parsed.articles.length === 0) {
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+            continue;
+          } else {
+            throw new Error("Feed has 0 articles (even after forced reload)");
+          }
+        }
+        const faviconUrl = getFaviconUrl(parsed.meta.site_url, feed.url);
+        if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
+          this.feedService.update(
+            feed.id,
+            {
+              title: parsed.meta.title ?? void 0,
+              site_url: parsed.meta.site_url ?? void 0,
+              favicon_url: faviconUrl ?? void 0
+            },
+            skipPersist
+          );
+        }
+        let articlesNew = 0;
+        for (const article of parsed.articles) {
+          if (!article.guid) continue;
+          const { isNew } = this.articleService.upsert({
+            feed_id: feed.id,
+            guid: article.guid,
+            url: article.url ?? void 0,
+            title: article.title ?? void 0,
+            author: article.author ?? void 0,
+            content_html: article.content_html ?? void 0,
+            content_text: article.content_text ?? void 0,
+            excerpt: article.excerpt ?? void 0,
+            enclosure_url: article.enclosure_url ?? void 0,
+            enclosure_type: article.enclosure_type ?? void 0,
+            word_count: article.word_count ?? void 0,
+            published_at: article.published_at ?? void 0,
+            thumbnail_url: article.thumbnail_url ?? void 0
+          });
+          if (isNew) articlesNew++;
+        }
+        if (!skipPersist) persistDatabase();
+        const nextFetch2 = this.adaptiveInterval(feed, articlesNew, true);
         this.feedService.updateAfterSync(
           {
             id: feed.id,
-            last_etag: response.etag ?? feed.last_etag,
-            last_modified: response.lastModified ?? feed.last_modified,
+            last_etag: response.etag,
+            last_modified: response.lastModified,
             next_fetch_at: nextFetch2,
             error_count: 0
           },
           skipPersist
         );
-        this.finishSyncLog(logId, 0, 0, "success", void 0, skipPersist);
-        this.emitStatus({ feedId: feed.id, status: "not_modified" });
-        return { feedId: feed.id, articlesNew: 0, articlesUpdated: 0, status: "not_modified" };
-      }
-      let parsed = parseFeed(response.body, response.contentType);
-      const isContentMissing = parsed.articles.length === 0 || parsed.articles.every(
-        (a) => !a.content_html && !a.content_text && (!a.excerpt || a.excerpt.length < 50)
-      );
-      if (isContentMissing) {
-        let fallbackUrl = null;
-        if (feed.url.endsWith(".rss")) fallbackUrl = feed.url.replace(/\.rss$/, ".atom");
-        else if (feed.url.endsWith(".atom")) fallbackUrl = feed.url.replace(/\.atom$/, ".rss");
-        else if (feed.url.endsWith("/rss")) fallbackUrl = feed.url.replace(/\/rss$/, "/atom");
-        else if (feed.url.endsWith("/atom")) fallbackUrl = feed.url.replace(/\/atom$/, "/rss");
-        if (fallbackUrl) {
-          try {
-            const fbRes = await fetchFeed(fallbackUrl);
-            if (fbRes.status === 200) {
-              const fbParsed = parseFeed(fbRes.body, fbRes.contentType);
-              if (fbParsed.articles.length > 0) {
-                parsed = fbParsed;
-              }
-            }
-          } catch (fallbackErr) {
-          }
+        this.finishSyncLog(logId, articlesNew, 0, "success", void 0, skipPersist);
+        this.emitStatus({ feedId: feed.id, status: "success", articlesNew });
+        return { feedId: feed.id, articlesNew, articlesUpdated: 0, status: "success" };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
         }
       }
-      const faviconUrl = getFaviconUrl(parsed.meta.site_url, feed.url);
-      if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
-        this.feedService.update(
-          feed.id,
-          {
-            title: parsed.meta.title ?? void 0,
-            site_url: parsed.meta.site_url ?? void 0,
-            favicon_url: faviconUrl ?? void 0
-          },
-          skipPersist
-        );
-      }
-      let articlesNew = 0;
-      for (const article of parsed.articles) {
-        if (!article.guid) continue;
-        const { isNew } = this.articleService.upsert({
-          feed_id: feed.id,
-          guid: article.guid,
-          url: article.url ?? void 0,
-          title: article.title ?? void 0,
-          author: article.author ?? void 0,
-          content_html: article.content_html ?? void 0,
-          content_text: article.content_text ?? void 0,
-          excerpt: article.excerpt ?? void 0,
-          enclosure_url: article.enclosure_url ?? void 0,
-          enclosure_type: article.enclosure_type ?? void 0,
-          word_count: article.word_count ?? void 0,
-          published_at: article.published_at ?? void 0,
-          thumbnail_url: article.thumbnail_url ?? void 0
-        });
-        if (isNew) articlesNew++;
-      }
-      if (!skipPersist) persistDatabase();
-      const nextFetch = this.adaptiveInterval(feed, articlesNew, true);
-      this.feedService.updateAfterSync(
-        {
-          id: feed.id,
-          last_etag: response.etag,
-          last_modified: response.lastModified,
-          next_fetch_at: nextFetch,
-          error_count: 0
-          // Reset error counter on success
-        },
-        skipPersist
-      );
-      this.finishSyncLog(logId, articlesNew, 0, "success", void 0, skipPersist);
-      this.emitStatus({ feedId: feed.id, status: "success", articlesNew });
-      return { feedId: feed.id, articlesNew, articlesUpdated: 0, status: "success" };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[SyncEngine] Error saving feed:", feed.id, message);
-      const newErrorCount = (feed.error_count ?? 0) + 1;
-      const backoff = Math.min(INTERVAL.DEFAULT * Math.pow(2, newErrorCount), INTERVAL.BACKOFF_MAX);
-      const nextFetch = Math.floor(Date.now() / 1e3) + backoff;
-      this.feedService.updateAfterSync(
-        {
-          id: feed.id,
-          last_etag: feed.last_etag,
-          last_modified: feed.last_modified,
-          next_fetch_at: nextFetch,
-          error_count: newErrorCount
-        },
-        skipPersist
-      );
-      if (newErrorCount >= 10) {
-        this.feedService.update(feed.id, { is_active: false }, skipPersist);
-        console.error(
-          `[SyncEngine] Feed ${feed.id} disabled after ${newErrorCount} consecutive errors`
-        );
-      }
-      this.finishSyncLog(logId, 0, 0, "error", message, skipPersist);
-      this.emitStatus({ feedId: feed.id, status: "error", error: message });
-      return {
-        feedId: feed.id,
-        articlesNew: 0,
-        articlesUpdated: 0,
-        status: "error",
-        error: message
-      };
     }
+    const message = lastError?.message || "Sync failed";
+    console.error(`[SyncEngine] Persistent error for feed ${feed.id}:`, message);
+    const newErrorCount = (feed.error_count ?? 0) + 1;
+    const backoff = Math.min(INTERVAL.DEFAULT * Math.pow(2, newErrorCount), INTERVAL.BACKOFF_MAX);
+    const nextFetch = Math.floor(Date.now() / 1e3) + backoff;
+    this.feedService.updateAfterSync(
+      {
+        id: feed.id,
+        last_etag: feed.last_etag,
+        last_modified: feed.last_modified,
+        next_fetch_at: nextFetch,
+        error_count: newErrorCount
+      },
+      skipPersist
+    );
+    if (newErrorCount >= 10) {
+      this.feedService.update(feed.id, { is_active: false }, skipPersist);
+    }
+    this.finishSyncLog(logId, 0, 0, "error", message, skipPersist);
+    this.emitStatus({ feedId: feed.id, status: "error", error: message });
+    return {
+      feedId: feed.id,
+      articlesNew: 0,
+      articlesUpdated: 0,
+      status: "error",
+      error: message
+    };
   }
   // ── Adaptive interval ─────────────────────────────────────────────────────
   /**
@@ -2111,9 +2175,22 @@ function createWindow() {
 }
 let scheduler = null;
 async function bootstrap() {
+  try {
+    const enginePath = path.join(electron.app.getPath("userData"), "adblocker-engine.bin");
+    const blocker = await adblockerElectron.ElectronBlocker.fromPrebuiltAdsAndTracking(fetch$1, {
+      path: enginePath,
+      read: fs.promises.readFile,
+      write: fs.promises.writeFile
+    });
+    blocker.enableBlockingInSession(electron.session.defaultSession);
+    console.log("[Adblock] Engine loaded and active");
+  } catch (err) {
+    console.error("[Adblock] Failed to initialise:", err);
+  }
   const db = await getDatabase();
   runMigrations(db);
   const feedService = new FeedService(db);
+  feedService.resetErrorCounts();
   const articleService = new ArticleService(db);
   const searchService = new SearchService(db);
   const settingsService = new SettingsService(db);

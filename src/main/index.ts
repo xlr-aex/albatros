@@ -12,8 +12,11 @@
  *  7. On before-quit: stop scheduler, close DB
  */
 
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, session } from 'electron'
 import path from 'path'
+import { promises as fs } from 'fs'
+import { ElectronBlocker } from '@cliqz/adblocker-electron'
+import fetch from 'cross-fetch'
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 import { getDatabase, closeDatabase } from './db/connection'
@@ -78,12 +81,33 @@ function createWindow(): BrowserWindow {
 let scheduler: Scheduler | null = null
 
 async function bootstrap(): Promise<void> {
+  // ── 0. Adblock engine ──────────────────────────────────────────────────
+  //    Loads prebuilt EasyList + EasyPrivacy filter lists with disk caching.
+  //    First run downloads lists (~2s), subsequent starts load from cache (<50ms).
+  //    The engine auto-refreshes stale lists from the network when possible.
+  try {
+    const enginePath = path.join(app.getPath('userData'), 'adblocker-engine.bin')
+    const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+      path: enginePath,
+      read: fs.readFile,
+      write: fs.writeFile,
+    })
+    // Apply to a dedicated partition so the main app session is unaffected
+    blocker.enableBlockingInSession(session.fromPartition('persist:adblock'))
+    console.log('[Adblock] Engine loaded on partition persist:adblock')
+  } catch (err) {
+    console.error('[Adblock] Failed to initialise:', err)
+    // Non-fatal: app works without adblocking
+  }
+
   // ── 1. Database ──────────────────────────────────────────────────────────
   const db = await getDatabase()
   runMigrations(db)
 
   // ── 2. Services ──────────────────────────────────────────────────────────
   const feedService     = new FeedService(db)
+  feedService.resetErrorCounts() // Clean state on start
+
   const articleService  = new ArticleService(db)
   const searchService   = new SearchService(db)
   const settingsService = new SettingsService(db)

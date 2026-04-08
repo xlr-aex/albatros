@@ -8,7 +8,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import DOMPurify from 'dompurify'
 import { useArticleStore } from '../../store/articleStore'
 import styles from './ArticleReader.module.css'
-import { formatDate, readingTime, unescapeHtml } from '../../utils/format'
+import { formatDate, unescapeHtml } from '../../utils/format'
 import { HighlightText } from './HighlightText'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,7 +66,7 @@ const RetroPlayerNode = React.memo(({
 }) => {
   if (!ytVideoId || hasNewPlayer) return null
   const html = isActive
-    ? `<iframe width="100%" height="100%" src="https://www.youtube-nocookie.com/embed/${ytVideoId}?autoplay=1&dnt=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
+    ? `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${ytVideoId}?autoplay=1&dnt=1" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
     : `<a href="https://www.youtube.com/watch?v=${ytVideoId}" target="_blank" rel="noopener noreferrer" class="youtube-player-preview"><img src="https://i.ytimg.com/vi/${ytVideoId}/maxresdefault.jpg" onerror="this.src='https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg'" alt="YouTube Video" /><div class="youtube-player-overlay"><div class="youtube-play-button"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div><div class="youtube-pill">YouTube</div></div></a>`
   
   return <div key="retro-player" className="youtube-player-container" dangerouslySetInnerHTML={{ __html: html }} />
@@ -118,13 +118,12 @@ export function ArticleReader() {
     e.preventDefault()
     e.stopPropagation()
 
-    // Facade pattern: swap YouTube preview with a radical ad-free iframe embed
+    // YouTube preview click: swap to inline iframe player within the article
     if (target.classList.contains('youtube-player-preview')) {
       const ytVideoIdMatch = href.match(/(?:v=|\/)([\w-]{11})(?:\?|&|$)/)
       const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
       
       if (ytVideoId) {
-        // Defer to React state so the iframe survives sync re-renders perfectly
         setActiveYtVideos(prev => Array.from(new Set([...prev, ytVideoId])))
         return
       }
@@ -200,8 +199,7 @@ export function ArticleReader() {
     )
   }
 
-  const { id, title, author, published_at, url, feed_title, word_count, is_saved } = selectedArticle
-  const readMin = word_count ? readingTime(word_count) : null
+  const { id, title, author, published_at, url, feed_title, feed_favicon, word_count, is_saved } = selectedArticle
 
 
   async function toggleSave() {
@@ -236,6 +234,7 @@ export function ArticleReader() {
           <webview
             className={styles.embeddedFrame}
             src={embeddedUrl}
+            partition="persist:adblock"
             style={{ flex: 1, width: '100%', border: 'none' }}
           />
         </div>
@@ -252,17 +251,21 @@ export function ArticleReader() {
             {/* ── Header Information (Scrolls Away) ─────────── */}
             <header className={styles.header}>
               <div className={styles.meta}>
-                <span className={styles.feedName}>{feed_title}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  {feed_favicon && (
+                    <img 
+                      src={feed_favicon} 
+                      className={styles.feedFavicon} 
+                      alt=""
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  <span className={styles.feedName}>{feed_title}</span>
+                </div>
                 <span className={styles.dot}>·</span>
                 <time className={styles.date} dateTime={published_at ? new Date(published_at * 1000).toISOString() : undefined}>
                   {published_at ? formatDate(published_at) : 'Unknown date'}
                 </time>
-                {readMin && (
-                  <>
-                    <span className={styles.dot}>·</span>
-                    <span className={styles.readTime}>{readMin} min read</span>
-                  </>
-                )}
               </div>
 
               <h1 className={styles.title}>
@@ -341,7 +344,7 @@ export function ArticleReader() {
                 const regex = new RegExp(`<a href="[^"]*${vid}"[^>]*class="youtube-player-preview"[^>]*>[\\s\\S]*?</a>`, 'gi')
                 htmlToRender = htmlToRender.replace(
                   regex,
-                  `<iframe width="100%" height="100%" src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&dnt=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
+                  `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${vid}?autoplay=1&dnt=1" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
                 )
               })
 

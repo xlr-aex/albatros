@@ -288,4 +288,13 @@ export class FeedService {
     `)
     persistDatabase()
   }
+
+  /**
+   * Resets error_count to 0 for all feeds.
+   * Typically called at boot to avoid showing stale errors before a fresh sync attempt.
+   */
+  resetErrorCounts(): void {
+    this.db.run('UPDATE feeds SET error_count = 0')
+    persistDatabase()
+  }
 }
