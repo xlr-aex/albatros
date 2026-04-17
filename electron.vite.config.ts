@@ -32,6 +32,9 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     plugins: [react()],
+    server: {
+      port: 5273,
+    },
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

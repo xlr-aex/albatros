@@ -520,7 +520,12 @@ function fixYoutubeContent(videoId: string): string {
 }
 
 /**
- * Special handling for Reddit content to fix layout and blurry images.
+ * Special handling for Reddit content to fix layout and broken images.
+ *
+ * Image strategy:
+ * - preview.redd.it/ID.ext     → i.redd.it/ID.ext  (permanent, no signature)
+ * - external-preview.redd.it   → extract the url= param (original source, permanent)
+ * - preview.redd.it/external/  → same as above (old CDN path)
  */
 function fixRedditContent(html: string): string {
   if (!html) return html
@@ -533,21 +538,43 @@ function fixRedditContent(html: string): string {
       // 2. Normalize td to div for better stacking
       .replace(/<td[^>]*>/g, '<div style="margin-bottom: 1em;">')
       .replace(/<\/td>/g, '</div>')
-      // 3. Transform blurry previews to high-res i.redd.it links
-      // Handles src="https://preview.redd.it/ID.jpg?width=..."
+      // 3. external-preview.redd.it — extract the original image from url= param.
+      //    These carry a time-limited s= signature; the url= value is permanent.
       .replace(
-        /src=["'](https?:\/\/preview\.redd\.it\/[^"'>?]+)\?[^"'>]*["']/gi,
-        (match, previewUrl) => {
-          // If it's a standard hosted image (not external), swap to i.redd.it
-          if (!previewUrl.includes('/external/')) {
-            return `src="${previewUrl.replace('preview.redd.it', 'i.redd.it')}"`
+        /src=["'](https?:\/\/external-preview\.redd\.it\/[^"'><?]+)\?([^"'>]*)["']/gi,
+        (_match, _baseUrl, queryStr) => {
+          const rawQuery = queryStr.replace(/&amp;/g, '&')
+          try {
+            const originalUrl = new URLSearchParams(rawQuery).get('url')
+            if (originalUrl && originalUrl.startsWith('http')) {
+              return `src="${originalUrl}"`
+            }
+          } catch { /* ignore malformed query */ }
+          return _match // fallback: leave unchanged
+        },
+      )
+      // 4. preview.redd.it — swap hosted images to permanent i.redd.it (no signature),
+      //    and extract url= for old-style /external/ proxy paths.
+      .replace(
+        /src=["'](https?:\/\/preview\.redd\.it\/[^"'><?]+)\?([^"'>]*)["']/gi,
+        (_match, previewUrl, queryStr) => {
+          if (previewUrl.includes('/external/')) {
+            const rawQuery = queryStr.replace(/&amp;/g, '&')
+            try {
+              const originalUrl = new URLSearchParams(rawQuery).get('url')
+              if (originalUrl && originalUrl.startsWith('http')) {
+                return `src="${originalUrl}"`
+              }
+            } catch { /* ignore */ }
+            return _match
           }
-          // If it's an external preview, just strip the query params to get best available res
-          return `src="${previewUrl}"`
+          // Hosted Reddit image — swap domain, discard expiring signature
+          return `src="${previewUrl.replace('preview.redd.it', 'i.redd.it')}"`
         },
       )
   )
 }
+
 
 /**
  * Special handling for HackerNews feeds to display metadata nicely

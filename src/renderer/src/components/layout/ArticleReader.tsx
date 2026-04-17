@@ -78,6 +78,10 @@ export function ArticleReader() {
   const [linkPopup, setLinkPopup] = useState<{ url: string; x: number; y: number } | null>(null)
   const [embeddedUrl, setEmbeddedUrl] = useState<string | null>(null)
   const [isScrolled, setIsScrolled] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webviewRef = useRef<any>(null)
+  const [isWebviewLoading, setIsWebviewLoading] = useState(false)
+  const [webviewError, setWebviewError] = useState<string | null>(null)
   
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [liveComments, setLiveComments] = useState<any[]>([])
@@ -107,6 +111,37 @@ export function ArticleReader() {
         .finally(() => setIsLoadingComments(false))
     }
   }, [selectedArticle?.id, selectedArticle?.url])
+
+  // Track webview load state — show overlay immediately, remove on stop
+  useEffect(() => {
+    if (!embeddedUrl) return
+
+    setIsWebviewLoading(true)
+    setWebviewError(null)
+
+    const wv = webviewRef.current
+    if (!wv) return
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onStart = () => { setIsWebviewLoading(true); setWebviewError(null) }
+    const onStop  = () => setIsWebviewLoading(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onFail  = (e: any) => {
+      if (e.errorCode === -3) return // ERR_ABORTED — normal for redirects
+      setIsWebviewLoading(false)
+      setWebviewError(`Could not load page (${e.errorDescription || 'unknown error'})`)
+    }
+
+    wv.addEventListener('did-start-loading', onStart)
+    wv.addEventListener('did-stop-loading',  onStop)
+    wv.addEventListener('did-fail-load',     onFail)
+
+    return () => {
+      wv.removeEventListener('did-start-loading', onStart)
+      wv.removeEventListener('did-stop-loading',  onStop)
+      wv.removeEventListener('did-fail-load',     onFail)
+    }
+  }, [embeddedUrl])
 
   // Intercept all link clicks in article body
   const handleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -139,7 +174,12 @@ export function ArticleReader() {
   }
 
   function openInApp(url: string) {
-    setEmbeddedUrl(url)
+    // Reddit's new SPA blocks embedding and detects Electron — old.reddit.com is
+    // plain HTML, embedding-friendly, and loads far faster.
+    const targetUrl = /reddit\.com/i.test(url)
+      ? url.replace(/https?:\/\/(?:www\.|new\.|np\.)?reddit\.com/i, 'https://old.reddit.com')
+      : url
+    setEmbeddedUrl(targetUrl)
     setLinkPopup(null)
   }
 
@@ -239,12 +279,47 @@ export function ArticleReader() {
               ↗ Browser
             </button>
           </div>
-          <webview
-            className={styles.embeddedFrame}
-            src={embeddedUrl}
-            partition="persist:adblock"
-            style={{ flex: 1, width: '100%', border: 'none' }}
-          />
+
+          <div className={styles.embeddedBody}>
+            {/* Loading overlay — sits above the webview while it initialises */}
+            {isWebviewLoading && (
+              <div className={styles.embeddedLoading}>
+                <div className={styles.embeddedProgressBar}>
+                  <div className={styles.embeddedProgressBarFill} />
+                </div>
+                <span className={styles.embeddedLoadingUrlHint}>{embeddedUrl}</span>
+              </div>
+            )}
+
+            {webviewError ? (
+              <div className={styles.embeddedErrorState}>
+                <span style={{ fontSize: '2rem' }}>🚫</span>
+                <p style={{ margin: 0, maxWidth: 280, textAlign: 'center' }}>{webviewError}</p>
+                <button
+                  className={styles.embeddedClose}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => openInBrowser(embeddedUrl)}
+                >
+                  ↗ Open in browser instead
+                </button>
+              </div>
+            ) : (
+              <webview
+                ref={webviewRef}
+                className={styles.embeddedFrame}
+                src={embeddedUrl}
+                partition="persist:adblock"
+                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  border: 'none',
+                  opacity: isWebviewLoading ? 0 : 1,
+                  transition: 'opacity 0.3s ease',
+                }}
+              />
+            )}
+          </div>
         </div>
       )}
 

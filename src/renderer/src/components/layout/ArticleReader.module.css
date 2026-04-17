@@ -236,3 +236,71 @@
   border: 0;
   width: 100%;
 }
+
+/* Flexible body area inside the embedded browser (below header) */
+.embeddedBody {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Loading overlay — displayed above the webview while the page initialises */
+.embeddedLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  background: var(--bg-base);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.embeddedProgressBar {
+  width: 240px;
+  height: 3px;
+  background: var(--border-subtle);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.embeddedProgressBarFill {
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, var(--brand-400), var(--brand-500, var(--brand-400)));
+  border-radius: 99px;
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0%   { transform: translateX(-200%); }
+  100% { transform: translateX(600%); }
+}
+
+.embeddedLoadingUrlHint {
+  max-width: 320px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Error state when load fails */
+.embeddedErrorState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-6);
+}
+

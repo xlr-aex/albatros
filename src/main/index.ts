@@ -113,6 +113,38 @@ async function bootstrap(): Promise<void> {
     // Non-fatal: app works without adblocking
   }
 
+  // ── 0b. Reddit embed fix ────────────────────────────────────────────────
+  //    Reddit sends X-Frame-Options: SAMEORIGIN (and matching CSP frame-ancestors)
+  //    which Chromium enforces even inside <webview> elements, causing a blank page.
+  //    We strip those headers on the adblock session (used by <webview>) for Reddit only.
+  try {
+    const adblockSession = session.fromPartition('persist:adblock')
+    adblockSession.webRequest.onHeadersReceived(
+      { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*'] },
+      (details, callback) => {
+        const headers: Record<string, string[]> = {}
+        for (const [key, val] of Object.entries(details.responseHeaders ?? {})) {
+          const lower = key.toLowerCase()
+          if (lower === 'x-frame-options') continue // drop entirely
+          if (lower === 'content-security-policy') {
+            // Strip only the frame-ancestors directive; leave the rest intact
+            const filtered = (val as string[])
+              .map(v => v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim().replace(/;$/, '').trim())
+              .filter(Boolean)
+            if (filtered.length) headers[key] = filtered
+            continue
+          }
+          headers[key] = val as string[]
+        }
+        callback({ responseHeaders: headers })
+      }
+    )
+    console.log('[Embed] Reddit X-Frame-Options bypass active')
+  } catch (err) {
+    console.error('[Embed] Failed to set up Reddit header intercept:', err)
+    // Non-fatal
+  }
+
   // ── 1. Database ──────────────────────────────────────────────────────────
   const db = await getDatabase()
   runMigrations(db)

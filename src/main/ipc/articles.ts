@@ -8,6 +8,12 @@ import type { ArticleService, ArticleListParams } from '../services/ArticleServi
 import type { SearchService } from '../services/SearchService'
 import type { FeedService } from '../services/FeedService'
 
+// ── Reddit API in-memory cache ────────────────────────────────────────────────
+// Keyed by post URL. Entries expire after REDDIT_CACHE_TTL ms.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _redditCache = new Map<string, { data: any; ts: number }>()
+const REDDIT_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 export function registerArticleHandlers(
   articleService: ArticleService,
   searchService:  SearchService,
@@ -70,19 +76,30 @@ export function registerArticleHandlers(
     return articleService.getGithubLinks()
   })
 
-  /** Fetch live Reddit comments via JSON backend proxy. */
+  /** Fetch live Reddit comments via JSON backend proxy — with in-memory cache. */
   ipcMain.handle('articles:get-reddit-comments', async (_event, url: string) => {
+    const empty = { comments: [], selftextHtml: null }
     try {
-      if (!url.includes('reddit.com')) return []
+      if (!url.includes('reddit.com')) return empty
+
+      // ── Cache hit ─────────────────────────────────────────────────────
+      const now = Date.now()
+      const cached = _redditCache.get(url)
+      if (cached && now - cached.ts < REDDIT_CACHE_TTL) {
+        return cached.data
+      }
+
+      // ── Fetch ────────────────────────────────────────────────────────
       const jsonUrl = url.replace(/\/$/, '') + '.json'
       const res = await fetch(jsonUrl, {
-        headers: { 'User-Agent': 'Albatros/1.0.0 (Node.js)' }
+        headers: { 'User-Agent': 'Albatros/1.0.0 (Node.js)' },
+        signal: AbortSignal.timeout(12_000), // 12 s hard timeout
       })
-      if (!res.ok) return []
-      
+      if (!res.ok) return empty
+
       const json = await res.json()
       const commentsData = json[1]?.data?.children || []
-      
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parseComment = (child: any): any => {
         if (child.kind === 't1' && child.data && child.data.body) {
@@ -112,18 +129,28 @@ export function registerArticleHandlers(
       }
 
       const comments = commentsData.map(parseComment).filter(Boolean)
-      
-      // Extract the main post's self-text HTML if available (useful for crossposts without RSS text)
+
+      // Extract the main post’s self-text HTML if available
       let selftextHtml = null
       const postData = json[0]?.data?.children?.[0]?.data
       if (postData && postData.selftext_html) {
-         selftextHtml = postData.selftext_html.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+        selftextHtml = postData.selftext_html
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
       }
 
-      return { comments, selftextHtml }
+      const result = { comments, selftextHtml }
+
+      // ── Store in cache ───────────────────────────────────────────────────
+      _redditCache.set(url, { data: result, ts: now })
+      // Evict entries older than 2× TTL to prevent unbounded growth
+      for (const [k, v] of _redditCache) {
+        if (now - v.ts > REDDIT_CACHE_TTL * 2) _redditCache.delete(k)
+      }
+
+      return result
     } catch (err) {
       console.warn('[IPC] Failed to fetch reddit comments:', err)
-      return { comments: [], selftextHtml: null }
+      return empty
     }
   })
 }
