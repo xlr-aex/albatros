@@ -133,6 +133,11 @@ export function AiDigestView() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, state])
 
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -338,7 +343,17 @@ ${contentToSend}`
   }
 
   return (
-    <div className={styles.container}>
+    <div 
+      className={styles.container} 
+      onClick={(e) => {
+        // Only focus if the click was directly on main structural areas (not on selects/buttons/links)
+        const target = e.target as HTMLElement
+        const isInteractive = target.closest('button, a, select, input, textarea')
+        if (!isInteractive) {
+          inputRef.current?.focus()
+        }
+      }}
+    >
       <header className={styles.header}>
         <div className="drag-region" style={{ height: '30px', width: '100%', position: 'absolute', top: 0, left: 0 }} />
         <div className={styles.toolbar}>
@@ -433,6 +448,7 @@ ${contentToSend}`
         <div className={styles.inputWrapper}>
           <textarea
             ref={inputRef}
+            autoFocus
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             onKeyDown={e => {
