@@ -9,38 +9,42 @@
 [![SQLite](https://img.shields.io/badge/SQLite-FTS4-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Albatros** is a high-performance, privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers like Inoreader or Google Reader.
+**Albatros** is a privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers. 
 
-Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js WASM)**, Albatros offers a seamless bridge between the traditional web and a modern, offline-first desktop application.
+Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js WASM)**, Albatros offers a seamless bridge between the traditional web and a modern, offline-first desktop application, enhanced with an advanced local AI-powered RAG (Retrieval-Augmented Generation) assistant.
 
 ---
 
 ## 🚀 Key Features
 
 ### 🛡️ Privacy & Security First
-- **Zero Telemetry**: No tracking, no data collection. Your subscriptions and reading habits stay on your machine.
+- **Zero Telemetry**: No tracking, no data collection. Your subscriptions and reading habits stay entirely on your machine.
 - **Local-First Architecture**: Your entire database resides locally. Albatros works perfectly offline with all your downloaded content.
-- **SSRF Network Guards**: Built-in protection against Server-Side Request Forgery, preventing malicious feeds from scanning your local network or localhost.
-- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the rendering layer, ensuring no malicious scripts can be executed.
+- **SSRF Network Guards**: Built-in protection against Server-Side Request Forgery, preventing malicious feeds from scanning your local network or localhost endpoints.
+- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the rendering layer, ensuring no malicious scripts can ever be executed.
 
-### ⚡ Performance at Scale
-- **Virtualization**: Utilizing `@tanstack/react-virtual`, the article list remains buttery smooth (60fps) even with tens of thousands of items.
+### 🤖 Built-In AI Digest & RAG Capabilities
+- **Local LLM Integration**: Connect directly to your local models using either **LM Studio** or **Ollama**, completely offline.
+- **Retrieval-Augmented Generation (RAG)**: Use the "AiDigestView" to chat with your feeds. The system performs a deep scan of up to your last 10,000 articles using SQLite FTS4.
+- **Strict Sourcing & Citations**: The AI Assistant is instructed to meticulously cite its sources. Clickable citation badges (e.g., `[123]`) route you directly to the exact article referenced in your database.
+- **Custom Prompts**: Set customized instructions for summaries or news digests directly via your settings.
+
+### ⚡ Technical Excellence
+- **Hardware-Accelerated Virtualization**: Utilizing `@tanstack/react-virtual`, the UI is buttery smooth (60 FPS) rendering tens of thousands of items simultaneously.
 - **Smart Sync Engine**: An adaptive polling system that scales fetch intervals based on update frequency and handles exponential backoff for failing feeds.
-- **Bandwidth Efficiency**: Full support for **ETag** and **Last-Modified** HTTP headers to avoid re-downloading unchanged feed content.
+- **Bandwidth Efficiency**: Full support for `ETag` and `Last-Modified` HTTP headers to avoid re-downloading unchanged feed content.
 
 ### 🔍 Advanced Search & Organization
-- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search), allowing for instant matching across your entire library.
-- **Logical Grouping**: Organize feeds into custom folders with aggregate unread counts.
+- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search), providing instant semantic matching across your entire library.
+- **Triggers-Driven Metrics**: Unread counts are computed via SQLite triggers for zero-overhead metrics calculation during render.
 - **Contextual Views**: Dedicated "Unread", "Starred", "Today", and "Saved" views to keep your focus where it matters.
-- **Reddit Native Comments**: Automatically fetch and render Reddit comments for posts directly inside the article reader.
+- **Reddit Native Comments**: Automatically fetches and renders Reddit comments for posts directly inside the article reader.
 
 ---
 
 ## ⌨️ Productivity & UX
 
 Albatros is designed for "power readers." Almost every action is mapped to a keyboard shortcut for a mouse-free experience.
-
-### Keyboard Shortcuts
 
 | Category | Command | Key |
 |---|---|---|
@@ -61,15 +65,13 @@ Albatros is designed for "power readers." Almost every action is mapped to a key
 
 Albatros follows a strict separation of concerns to maximize security and stability:
 
-- **Main Process**: Handles the SQLite database (sql.js), the Background Sync Engine, and secure networking via native `fetch`.
-- **Renderer Process**: A React 19 application using **Zustand** for ultra-fast state management and **CSS Modules** for scoped, performant styling.
+- **Main Process**: Handles the SQLite database (`sql.js`), the Background Sync Engine, and secure networking via native `fetch` and custom FTS caching logic.
+- **Renderer Process**: A React 19 application using **Zustand** for state management and DOMPurify for HTML sanitization.
 - **Preload Script**: Acts as a secure, typed bridge between the two processes, exposing no raw Node.js APIs to the frontend.
 
-### Tech Stack
-- **Runtime**: Electron 34, Node.js 22.
-- **Frontend**: React 19, Radix UI Primitives, Lucide Icons.
-- **Database**: SQLite (WASM via `sql.js`) with custom Triggers and FTS4.
-- **Tooling**: Vite (`electron-vite`), TypeScript, Vitest (Unit), Playwright (E2E).
+For a comprehensive technical deep-dive, see the official documentation.
+
+👉 **[Go to DOCUMENTATION.md](./DOCUMENTATION.md)**
 
 ---
 
@@ -100,18 +102,6 @@ npm run dev
 # Build for the current platform
 npm run build
 ```
-
----
-
-## 📖 Internal Documentation
-
-For developers or advanced users wanting to dive deeper into the implementation:
-
-- 🏗️ **[Architecture Overview](docs/architecture.md)** — Detailed IPC and process mapping. (Coming Soon)
-- 🔌 **[IPC API Bridge](docs/api-ipc.md)** — Communication protocols between Main and Renderer.
-- 🗄️ **[Database Schema](docs/database.md)** — Relational design and search triggers.
-- 🔄 **[Sync Engine](docs/sync-engine.md)** — Polling logic and parser architecture.
-- 🎨 **[UI/UX Design](docs/ui-ux.md)** — Design tokens and accessibility patterns.
 
 ---
 
