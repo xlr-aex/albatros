@@ -1,24 +1,16 @@
 /**
  * @file connection.ts
- * @description SQLite database connection singleton powered by sql.js (WASM).
+ * @description SQLite database connection singleton powered by better-sqlite3.
  *
- * sql.js runs SQLite entirely as a WebAssembly binary inside Node.js — no
- * native compilation required. The database is persisted as a regular .db
- * file on disk; sql.js loads it into memory, and we flush it back to disk
- * after each write operation via `persistDatabase()`.
- *
- * PRAGMAS applied on open:
- *  - journal_mode = MEMORY   (WAL not supported in sql.js, MEMORY is fastest)
- *  - synchronous  = OFF      (writes are safe because we flush manually)
- *  - foreign_keys = ON
- *  - cache_size   = -32000   (~32 MB page cache)
- *  - temp_store   = MEMORY
+ * It uses WAL (Write-Ahead Logging) for high performance and concurrency.
+ * Reads and writes are immediate and automatic.
  */
 
 import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
-import initSqlJs, { type Database } from 'sql.js'
+import Database from 'better-sqlite3'
+import type { Database as BetterSqlite3Database } from 'better-sqlite3'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -27,69 +19,42 @@ const getDbPath = () => path.join(app.getPath('userData'), 'albatros.db')
 
 // ─── Module-level singleton ───────────────────────────────────────────────────
 
-let _db: Database | null = null
-let _persistTimeout: ReturnType<typeof setTimeout> | null = null
-const PERSIST_DEBOUNCE_MS = 10_000 // 10 seconds
+let _db: BetterSqlite3Database | null = null
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Returns the initialised sql.js database, creating it if it doesn't yet exist.
- * Safe to call multiple times — only one Database instance is ever created.
+ * Returns the initialised database, creating it if it doesn't yet exist.
+ * Kept strictly async to maintain compatibility with legacy sql.js signature.
  */
-export async function getDatabase(): Promise<Database> {
+export async function getDatabase(): Promise<BetterSqlite3Database> {
   if (_db) return _db
 
   // Ensure the data directory exists
   const dataDir = app.getPath('userData')
-  fs.mkdirSync(dataDir, { recursive: true })
-
-  // Initialise sql.js with the bundled WASM binary
-  const SqlJs = await initSqlJs()
-
-  // Load existing file or start with an empty database
-  const dbPath = getDbPath()
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath)
-    _db = new SqlJs.Database(fileBuffer)
-  } else {
-    _db = new SqlJs.Database()
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true })
   }
+
+  const dbPath = getDbPath()
+  _db = new Database(dbPath)
 
   applyPragmas(_db)
   return _db
 }
 
 /**
- * Schedules a write of the current in-memory database state to disk.
- * Debounced to avoid excessive I/O on rapid changes (e.g. sync batches).
+ * No-op for better-sqlite3 since writes are synchronous and automatic.
  */
 export function persistDatabase(): void {
-  if (!_db) return
-  if (_persistTimeout) return // Already scheduled
-
-  _persistTimeout = setTimeout(() => {
-    persistDatabaseNow()
-  }, PERSIST_DEBOUNCE_MS)
+  // Legacy stub — do nothing. 
 }
 
 /**
- * Immediately writes the current in-memory database state to disk.
- * Bypasses the debounce timer.
+ * No-op for better-sqlite3 since writes are synchronous and automatic.
  */
 export function persistDatabaseNow(): void {
-  if (!_db) return
-  if (_persistTimeout) {
-    clearTimeout(_persistTimeout)
-    _persistTimeout = null
-  }
-
-  const data = _db.export()
-  try {
-    fs.writeFileSync(getDbPath(), Buffer.from(data))
-  } catch (err) {
-    console.error('[Database] Failed to persist:', err)
-  }
+  // Legacy stub — do nothing.
 }
 
 /**
@@ -98,7 +63,6 @@ export function persistDatabaseNow(): void {
  */
 export function closeDatabase(): void {
   if (_db) {
-    persistDatabaseNow()
     _db.close()
     _db = null
   }
@@ -107,12 +71,10 @@ export function closeDatabase(): void {
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
 /** Applies performance and safety PRAGMAs right after opening. */
-function applyPragmas(db: Database): void {
-  db.run(`
-    PRAGMA journal_mode = MEMORY;
-    PRAGMA synchronous  = OFF;
-    PRAGMA foreign_keys = ON;
-    PRAGMA cache_size   = -32000;
-    PRAGMA temp_store   = MEMORY;
-  `)
+function applyPragmas(db: BetterSqlite3Database): void {
+  db.pragma('journal_mode = WAL')
+  db.pragma('synchronous = NORMAL')
+  db.pragma('foreign_keys = ON')
+  db.pragma('cache_size = -32000') // ~32 MB page cache
+  db.pragma('temp_store = MEMORY')
 }

@@ -13,7 +13,7 @@
  *   3. The runner will automatically apply it on next launch.
  */
 
-import type { Database } from 'sql.js'
+import type { Database } from 'better-sqlite3'
 import { persistDatabase } from '../connection'
 
 // ─── Migration scripts ───────────────────────────────────────────────────────
@@ -77,11 +77,9 @@ export function runMigrations(db: Database): void {
   // Find the highest applied version (0 if table doesn't exist yet)
   let currentVersion = 0
   try {
-    const rows = db.exec(
-      'SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations',
-    )
-    if (rows.length > 0 && rows[0].values.length > 0) {
-      currentVersion = Number(rows[0].values[0][0])
+    const row = db.prepare('SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations').get() as { v: number } | undefined
+    if (row && typeof row.v === 'number') {
+      currentVersion = row.v
     }
   } catch {
     // Table doesn't exist yet — we're on a fresh database
@@ -95,7 +93,7 @@ export function runMigrations(db: Database): void {
   for (const migration of pending) {
     console.warn(`[DB] Applying migration ${migration.version}: ${migration.name}`)
     try {
-      db.run(migration.sql)
+      db.exec(migration.sql)
     } catch (err) {
       const error = err as Error
       if (error.message && error.message.includes('duplicate column name')) {
@@ -107,18 +105,15 @@ export function runMigrations(db: Database): void {
 
     // Record that this migration was applied (if schema_migrations table exists)
     try {
-      db.run(
+      db.prepare(
         `INSERT OR IGNORE INTO schema_migrations (version, name)
-         VALUES (?, ?)`,
-        [migration.version, migration.name],
-      )
+         VALUES (?, ?)`
+      ).run(migration.version, migration.name)
     } catch {
       // May fail if schema_migrations was created in *this* migration —
       // that's fine, migration v1 inserts the row itself.
     }
   }
 
-  // Flush changes to disk
-  persistDatabase()
   console.warn(`[DB] Migrations applied up to version ${MIGRATIONS[MIGRATIONS.length - 1].version}`)
 }

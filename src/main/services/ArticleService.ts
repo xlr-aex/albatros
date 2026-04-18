@@ -3,13 +3,10 @@
  * @description All database operations related to articles.
  *
  * Pagination uses a cursor-based approach (published_at + id) rather than
- * OFFSET, which degrades on large result sets.  The caller passes the last
- * seen (published_at, id) pair; the next page returns rows strictly before
- * that cursor.
+ * OFFSET, which degrades on large result sets.
  */
 
-import type { Database, SqlValue } from 'sql.js'
-import { persistDatabase } from '../db/connection'
+import type { Database } from 'better-sqlite3'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,33 +88,6 @@ export interface UpsertArticleInput {
   thumbnail_url?: string
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function rowToArticle(columns: string[], row: SqlValue[]): Article {
-  const o: Record<string, unknown> = {}
-  columns.forEach((col, i) => {
-    o[col] = row[i]
-  })
-  return {
-    ...(o as unknown as Article),
-    is_read: o['is_read'] === 1,
-    is_starred: o['is_starred'] === 1,
-    is_saved: o['is_saved'] === 1,
-  }
-}
-
-function rowToSummary(columns: string[], row: SqlValue[]): ArticleSummary {
-  const o: Record<string, unknown> = {}
-  columns.forEach((col, i) => {
-    o[col] = row[i]
-  })
-  return {
-    ...(o as unknown as ArticleSummary),
-    is_read: o['is_read'] === 1,
-    is_saved: o['is_saved'] === 1,
-  }
-}
-
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class ArticleService {
@@ -128,52 +98,36 @@ export class ArticleService {
   /**
    * One-time structural migration designed to retroactively flag orphaned Subreddit comments
    * natively inside SQLite via NodeJS Regex mapping, hiding them from the chronological view.
-   * Uses a settings flag so it only runs once, not on every startup.
    */
   private migrateRedditComments() {
-    // Check if we've already run this migration
-    const flag = this.db.exec("SELECT value FROM settings WHERE key = '_reddit_comments_migrated'")
-    if (flag.length && flag[0].values.length && flag[0].values[0][0] === '1') return
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = '_reddit_comments_migrated'").get() as Record<string, unknown>
+    if (row && row.value === '1') return
 
-    const rows = this.db.exec(
-      `SELECT id, url FROM articles WHERE url LIKE '%reddit.com%' AND (enclosure_type IS NULL OR enclosure_type != 'reddit-comment')`,
-    )
-    if (!rows.length || !rows[0].values.length) {
-      // Mark as done even if nothing to migrate
-      this.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')")
-      persistDatabase()
+    const rows = this.db.prepare(`SELECT id, url FROM articles WHERE url LIKE '%reddit.com%' AND (enclosure_type IS NULL OR enclosure_type != 'reddit-comment')`).all() as Record<string, unknown>[]
+    if (rows.length === 0) {
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')").run()
       return
     }
 
-    let updated = false
-    this.db.run('BEGIN TRANSACTION')
-    for (const [id, url] of rows[0].values) {
-      if (typeof url === 'string' && /\/comments\/[^/]+\/[^/]+\/[^/]+/.test(url)) {
-        this.db.run(`UPDATE articles SET enclosure_type = 'reddit-comment' WHERE id = ?`, [id])
-        updated = true
+    const transaction = this.db.transaction(() => {
+      const updateStmt = this.db.prepare(`UPDATE articles SET enclosure_type = 'reddit-comment' WHERE id = ?`)
+      for (const r of rows) {
+        if (typeof r.url === 'string' && /\/comments\/[^/]+\/[^/]+\/[^/]+/.test(r.url)) {
+          updateStmt.run(r.id)
+        }
       }
-    }
-    this.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')")
-    this.db.run('COMMIT')
-
-    if (updated) {
-      persistDatabase()
-    }
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('_reddit_comments_migrated', '1')").run()
+    })
+    transaction()
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
-  /**
-   * Returns a paginated list of article summaries.
-   * Uses cursor-based pagination for constant-time page loading regardless
-   * of how many articles exist.
-   */
   list(params: ArticleListParams): ArticleSummary[] {
     const limit = params.limit ?? 50
     const conditions: string[] = []
     const bindings: (string | number)[] = []
 
-    // ── Filters ────────────────────────────────────────────────────────────
     if (params.feed_id !== undefined) {
       conditions.push('a.feed_id = ?')
       bindings.push(params.feed_id)
@@ -194,16 +148,11 @@ export class ArticleService {
       bindings.push(oneDayAgo)
     }
 
-    // ── Cursor ─────────────────────────────────────────────────────────────
-    // Returns rows that come after the cursor position.
-    // The compound (published_at, id) pair ensures stable pagination even
-    // when multiple articles share the same published_at timestamp.
     if (params.cursor_published_at !== undefined && params.cursor_id !== undefined) {
       conditions.push('(a.published_at < ? OR (a.published_at = ? AND a.id < ?))')
       bindings.push(params.cursor_published_at, params.cursor_published_at, params.cursor_id)
     }
 
-    // Hide flagged reddit comments from chronological flows
     conditions.push("(a.enclosure_type IS NULL OR a.enclosure_type != 'reddit-comment')")
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -223,26 +172,23 @@ export class ArticleService {
     `
     bindings.push(limit)
 
-    const result = this.db.exec(sql, bindings)
-    if (!result.length) return []
-    const { columns, values } = result[0]
-    return values.map(row => rowToSummary(columns, row))
+    const rows = this.db.prepare(sql).all(...bindings) as Record<string, unknown>[]
+    return rows.map(row => ({
+      ...row,
+      is_read: row.is_read === 1,
+      is_saved: row.is_saved === 1,
+    })) as ArticleSummary[]
   }
 
-  /**
-   * Récupère un lot d'articles tronqués pour les injecter dans un RAG/Digest.
-   */
   getForDigest(params: ArticleListParams & { limit?: number; search_query?: string; timeframe?: string }): { id: number; url: string; title: string; content: string }[] {
-    let limit = params.limit ?? 10000 // Scan massif jusqu'à 10 000 articles
+    let limit = params.limit ?? 10000 
     let conditions: string[] = []
     let bindings: (string | number)[] = []
     let fromClause = 'FROM articles a JOIN feeds f ON f.id = a.feed_id'
     
-    // Troncation plus agressive (150 au lieu de 400) pour permettre d'injecter 10x plus d'articles.
-    let selectContent = 'SUBSTR(COALESCE(a.content_text, a.excerpt, ""), 1, 150) AS content'
+    let selectContent = "SUBSTR(COALESCE(a.content_text, a.excerpt, ''), 1, 150) AS content"
 
     if (params.search_query) {
-      // Filtrage des Stopwords français basiques et ponctuation pour transformer une phrase naturelle en requête de mots-clés FTS
       const stopWords = new Set(['le','la','les','un','une','des','de','du','et','ou','est','sont','a','à','en','pour','qui','que','quoi','dont','où','dans','sur','sous','vers','avec','sans','fais','fait','moi','peux','tu','je','il','elle','on','nous','vous','ils','elles','pas','ne','plus','moins','très','trop','quel','quelle','quels','quelles','comment','pourquoi','quand','combien','ce','cet','cette','ces','mon','ton','son','ma','ta','sa','mes','tes','ses','notre','votre','leur','nos','vos','leurs', 'quoi', 'tout', 'tous', 'résumé', 'resumé', 'résume', 'resume', 'donne', 'parle', 'dis', 'actu', 'actualité', 'actualités', 'news', 'nouveau', 'nouveaux', 'nouvelles', 'article', 'articles'])
 
       const words = params.search_query.trim()
@@ -256,8 +202,6 @@ export class ArticleService {
         const ftsQuery = words.map(w => `"${w}"*`).join(' OR ')
         conditions.push('articles_fts MATCH ?')
         bindings.push(ftsQuery)
-        
-        // Snippet FTS4 plus court pour la recherche profonde
         selectContent = "snippet(articles_fts, '[[', ']]', '...', -1, 40) AS content"
         limit = 10000 
       }
@@ -296,21 +240,18 @@ export class ArticleService {
     `
     bindings.push(limit)
 
-    const result = this.db.exec(sql, bindings)
-    if (!result.length || !result[0].values.length) return []
+    const rows = this.db.prepare(sql).all(...bindings) as Record<string, unknown>[]
     
-    return result[0].values.map(row => ({
-      id: Number(row[0] || 0),
-      url: String(row[1] || '#'),
-      title: String(row[2] || 'Unknown Title'),
-      // Si c'est un snippet, c'est déjà condensé. Sinon on truncate à 800 caractères.
+    return rows.map(row => ({
+      id: Number(row.id || 0),
+      url: String(row.url || '#'),
+      title: String(row.title || 'Unknown Title'),
       content: params.search_query && selectContent.includes('snippet') 
-        ? String(row[3] || '') 
-        : String(row[3] || '').substring(0, 800)
+        ? String(row.content || '') 
+        : String(row.content || '').substring(0, 800)
     }))
   }
 
-  /** Returns the full article (including HTML content) for the reader pane. */
   getById(id: number): Article | null {
     const sql = `
       SELECT
@@ -321,54 +262,55 @@ export class ArticleService {
       JOIN feeds f ON f.id = a.feed_id
       WHERE a.id = ?
     `
-    const result = this.db.exec(sql, [id])
-    if (!result.length || !result[0].values.length) return null
-    const article = rowToArticle(result[0].columns, result[0].values[0])
+    const row = this.db.prepare(sql).get(id) as Record<string, unknown>
+    if (!row) return null
 
-    // Hydrate Reddit comments natively by correlating URLs
+    const article = {
+        ...row,
+        is_read: row.is_read === 1,
+        is_starred: row.is_starred === 1,
+        is_saved: row.is_saved === 1,
+    } as Article
+
     if (article.url && article.url.includes('reddit.com/r/')) {
       const baseMatch = article.url.match(
         /^(https?:\/\/(?:www\.|old\.|np\.)?reddit\.com\/r\/[^/]+\/comments\/[^/]+\/[^/]+\/)/,
       )
       if (baseMatch) {
         const baseUrl = baseMatch[1]
-        const commentRows = this.db.exec(
+        const commentRows = this.db.prepare(
           `SELECT
              a.*,
              f.title AS feed_title,
              f.favicon_url AS feed_favicon
            FROM articles a
            JOIN feeds f ON f.id = a.feed_id
-           WHERE a.feed_id = ? AND a.enclosure_type = 'reddit-comment'`,
-          [article.feed_id],
-        )
-        if (commentRows.length && commentRows[0].values.length) {
-          const { columns, values } = commentRows[0]
-          article.comments = values
-            .map(row => rowToArticle(columns, row))
+           WHERE a.feed_id = ? AND a.enclosure_type = 'reddit-comment'`
+        ).all(article.feed_id) as Record<string, unknown>[]
+
+        article.comments = commentRows
+            .map(r => ({
+                ...r,
+                is_read: r.is_read === 1,
+                is_starred: r.is_starred === 1,
+                is_saved: r.is_saved === 1,
+            } as Article))
             .filter(c => c.url && c.url.startsWith(baseUrl) && c.id !== article.id)
             .sort((a, b) => (a.published_at || 0) - (b.published_at || 0))
-        }
       }
     }
     return article
   }
 
-  /** Returns the total count of unread articles (across all feeds). */
   totalUnreadCount(): number {
-    const result = this.db.exec('SELECT COUNT(*) FROM articles WHERE is_read = 0')
-    return Number(result[0]?.values[0][0] ?? 0)
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM articles WHERE is_read = 0').get() as Record<string, unknown>
+    return Number(row?.count ?? 0)
   }
 
-  /**
-   * Universal semantic search utilizing SQLite FTS4.
-   * Computes matches over tokenized content, AND relational folder/feed names.
-   */
   search(query: string): ArticleSummary[] {
     const q = query.trim()
     if (!q) return []
 
-    // Map strict prefixes for FTS text indexing and unindexed LIKE bounds
     const safeQuery = q.replace(/"/g, '""')
     const matchQuery = `"${safeQuery}"*`
     const likeQuery = `%${q}%`
@@ -396,29 +338,20 @@ export class ArticleService {
       LIMIT 100
     `
 
-    const result = this.db.exec(sql, [matchQuery, likeQuery, likeQuery])
-    if (!result.length) return []
-    return result[0].values.map(row => rowToSummary(result[0].columns, row))
+    const rows = this.db.prepare(sql).all(matchQuery, likeQuery, likeQuery) as Record<string, unknown>[]
+    return rows.map(row => ({
+      ...row,
+      is_read: row.is_read === 1,
+      is_saved: row.is_saved === 1,
+    })) as ArticleSummary[]
   }
 
   // ── Writes ────────────────────────────────────────────────────────────────
 
-  /**
-   * Inserts a new article, or ignores it silently if it already exists
-   * (same feed_id + guid). Returns the article ID (existing or new).
-   */
   upsert(input: UpsertArticleInput): { id: number; isNew: boolean } {
-    // Check for existing article first
-    const existing = this.db.exec('SELECT id FROM articles WHERE feed_id = ? AND guid = ?', [
-      input.feed_id,
-      input.guid,
-    ])
-    if (existing.length && existing[0].values.length) {
-      const existingId = Number(existing[0].values[0][0])
-
-      // Update the textual content in case the RSS feed changed or our parser improved
-      // Always update thumbnail_url when we have a new value (overwrite NULL)
-      this.db.run(
+    const existing = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as Record<string, unknown>
+    if (existing) {
+      this.db.prepare(
         `UPDATE articles SET
            title = COALESCE(?, title),
            content_html = COALESCE(?, content_html),
@@ -426,29 +359,28 @@ export class ArticleService {
            excerpt = COALESCE(?, excerpt),
            enclosure_type = COALESCE(?, enclosure_type),
            thumbnail_url = COALESCE(?, thumbnail_url)
-         WHERE id = ?`,
-        [
+         WHERE id = ?`
+      ).run(
           input.title ?? null,
           input.content_html ?? null,
           input.content_text ?? null,
           input.excerpt ?? null,
           input.enclosure_type ?? null,
           input.thumbnail_url ?? null,
-          existingId,
-        ],
+          existing.id
       )
 
-      return { id: existingId, isNew: false }
+      return { id: existing.id, isNew: false }
     }
 
     const now = Math.floor(Date.now() / 1000)
-    this.db.run(
+    const info = this.db.prepare(
       `INSERT OR IGNORE INTO articles
          (feed_id, guid, url, title, author, content_html, content_text,
           excerpt, enclosure_url, enclosure_type, thumbnail_url, word_count, published_at,
           fetched_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
         input.feed_id,
         input.guid,
         input.url ?? null,
@@ -463,38 +395,31 @@ export class ArticleService {
         input.word_count ?? null,
         input.published_at ?? now,
         now,
-        now,
-      ],
+        now
     )
-    // Note: persistDatabase() is NOT called here — the sync engine batches
-    // multiple upserts and calls persist once at the end for performance.
-    const res = this.db.exec('SELECT last_insert_rowid() AS id')
-    return { id: Number(res[0].values[0][0]), isNew: true }
-  }
-
-  /** Marks a single article as read or unread. */
-  setRead(id: number, value: boolean): void {
-    this.db.run('UPDATE articles SET is_read = ? WHERE id = ?', [value ? 1 : 0, id])
-    persistDatabase()
-  }
-
-  /** Saves or unsaves an article (Read Later queue). */
-  setSaved(id: number, value: boolean): void {
-    this.db.run('UPDATE articles SET is_saved = ? WHERE id = ?', [value ? 1 : 0, id])
-    if (value) {
-      // Add to read_later queue
-      this.db.run('INSERT OR IGNORE INTO read_later (article_id) VALUES (?)', [id])
-    } else {
-      this.db.run('DELETE FROM read_later WHERE article_id = ?', [id])
+    
+    // In rare cases where IGNORE kicks in due to uniqueness violation not caught by SELECT
+    if (info.changes === 0) {
+        const fallBack = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as Record<string, unknown>
+        return { id: fallBack.id, isNew: false }
     }
-    persistDatabase()
+
+    return { id: Number(info.lastInsertRowid), isNew: true }
   }
 
-  /**
-   * Marks all articles in a feed as read (or all feeds if feedId is undefined).
-   * After a bulk update the caller should call FeedService.recountUnread() to
-   * resync the denormalised counter.
-   */
+  setRead(id: number, value: boolean): void {
+    this.db.prepare('UPDATE articles SET is_read = ? WHERE id = ?').run(value ? 1 : 0, id)
+  }
+
+  setSaved(id: number, value: boolean): void {
+    this.db.prepare('UPDATE articles SET is_saved = ? WHERE id = ?').run(value ? 1 : 0, id)
+    if (value) {
+      this.db.prepare('INSERT OR IGNORE INTO read_later (article_id) VALUES (?)').run(id)
+    } else {
+      this.db.prepare('DELETE FROM read_later WHERE article_id = ?').run(id)
+    }
+  }
+
   markAllRead(feedId?: number): number {
     let sql = 'UPDATE articles SET is_read = 1 WHERE is_read = 0'
     const params: number[] = []
@@ -502,45 +427,25 @@ export class ArticleService {
       sql += ' AND feed_id = ?'
       params.push(feedId)
     }
-    this.db.run(sql, params)
-
-    // Count affected rows via changes()
-    const res = this.db.exec('SELECT changes()')
-    const affected = Number(res[0]?.values[0][0] ?? 0)
-    persistDatabase()
-    return affected
+    const info = this.db.prepare(sql).run(...params)
+    return info.changes
   }
 
-  /**
-   * Deletes old articles according to the retention policy.
-   * Articles that are starred or saved are never deleted.
-   *
-   * @param retentionDays - Delete articles older than this many days
-   * @returns Number of deleted rows
-   */
   applyRetention(retentionDays: number): number {
     const cutoff = Math.floor(Date.now() / 1000) - retentionDays * 86400
-    this.db.run(
+    const info = this.db.prepare(
       `DELETE FROM articles
        WHERE published_at < ?
          AND is_starred = 0
-         AND is_saved   = 0`,
-      [cutoff],
-    )
-    const res = this.db.exec('SELECT changes()')
-    const deleted = Number(res[0]?.values[0][0] ?? 0)
-    if (deleted > 0) persistDatabase()
-    return deleted
+         AND is_saved   = 0`
+    ).run(cutoff)
+    return info.changes
   }
 
   // ── GitHub Links Aggregator ───────────────────────────────────────────────
 
-  /**
-   * Scans the database for articles containing GitHub links, extracts them
-   * via basic Regex, and returns an array mapping them to their sources.
-   */
   getGithubLinks(): GithubLink[] {
-    const result = this.db.exec(`
+    const rows = this.db.prepare(`
       SELECT a.id, a.title, f.title as feed_title, a.content_html, fg.name as group_title
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
@@ -548,22 +453,19 @@ export class ArticleService {
       WHERE a.content_html LIKE '%github.com/%'
       ORDER BY a.published_at DESC
       LIMIT 3000
-    `)
+    `).all() as Record<string, unknown>[]
 
-    if (!result.length || !result[0].values.length) return []
+    if (!rows.length) return []
 
     const links: GithubLink[] = []
-
-    // Aggressive regex to find any href pointing to a GitHub repo (org/repo)
-    // We ignore inner HTML because RSS feeds often put linebreaks inside <a>...</a>
     const regex = /href=["'](https?:\/\/(?:www\.)?github\.com\/([^/"']+)\/([^/"'?#]+)[^"']*)["']/gi
 
-    result[0].values.forEach(row => {
-      const articleId = Number(row[0])
-      const articleTitle = String(row[1] || 'Untitled')
-      const feedTitle = String(row[2] || 'Unknown Feed')
-      const html = String(row[3] || '')
-      const groupTitle = row[4] ? String(row[4]) : undefined
+    for (const row of rows) {
+      const articleId = Number(row.id)
+      const articleTitle = String(row.title || 'Untitled')
+      const feedTitle = String(row.feed_title || 'Unknown Feed')
+      const html = String(row.content_html || '')
+      const groupTitle = row.group_title ? String(row.group_title) : undefined
 
       let match
       regex.lastIndex = 0
@@ -572,19 +474,7 @@ export class ArticleService {
         const org = match[2]
         const repo = match[3]
 
-        // Exclude system pages
-        const ignoreList = [
-          'search',
-          'topics',
-          'trending',
-          'pricing',
-          'contact',
-          'about',
-          'login',
-          'join',
-          'pulls',
-          'issues',
-        ]
+        const ignoreList = ['search', 'topics', 'trending', 'pricing', 'contact', 'about', 'login', 'join', 'pulls', 'issues']
         if (ignoreList.includes(org.toLowerCase()) || ignoreList.includes(repo.toLowerCase())) {
           continue
         }
@@ -600,9 +490,8 @@ export class ArticleService {
           groupTitle,
         })
       }
-    })
+    }
 
-    // Remove total duplicates across all articles (people reposting the exact same github link)
     const uniqueLinks: GithubLink[] = []
     const seenUrls = new Set<string>()
     for (const link of links) {

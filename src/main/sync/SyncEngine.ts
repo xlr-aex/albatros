@@ -122,7 +122,7 @@ export class SyncEngine {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         if (attempt > 1) {
-          console.log(`[SyncEngine] Retrying feed ${feed.id} (attempt ${attempt}/${MAX_ATTEMPTS})...`)
+          console.info(`[SyncEngine] Retrying feed ${feed.id} (attempt ${attempt}/${MAX_ATTEMPTS})...`)
         }
 
         // ── Fetch ──────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export class SyncEngine {
                   parsed = fbParsed
                 }
               }
-            } catch (fallbackErr) { /* ignore */ }
+            } catch { /* ignore */ }
           }
         }
 

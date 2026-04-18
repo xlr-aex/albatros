@@ -13,7 +13,7 @@
 
 import { XMLParser, XMLBuilder } from 'fast-xml-parser'
 import type { FeedService } from './FeedService'
-import { persistDatabase } from '../db/connection'
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,9 +83,7 @@ export class OpmlService {
       imported++
     }
 
-    if (imported > 0) {
-      persistDatabase()
-    }
+
 
     return imported
   }

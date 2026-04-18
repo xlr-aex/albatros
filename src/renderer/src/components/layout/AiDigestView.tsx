@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useFeedStore } from '../../store/feedStore'
-import { useUiStore } from '../../store/uiStore'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import styles from './AiDigestView.module.css'
@@ -25,7 +24,7 @@ async function loadAiConfig() {
   }
 }
 
-async function* streamLmStudio(config: any, messages: {role: string, content: string}[], signal: AbortSignal) {
+async function* streamLmStudio(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
   const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     signal,
@@ -64,12 +63,12 @@ async function* streamLmStudio(config: any, messages: {role: string, content: st
           const deltaStr = deltaObj.content || deltaObj.reasoning_content
           if (deltaStr) yield deltaStr
         }
-      } catch {}
+      } catch { /* ignore */ }
     }
   }
 }
 
-async function* streamOllama(config: any, messages: {role: string, content: string}[], signal: AbortSignal) {
+async function* streamOllama(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
   const res = await fetch(`${config.baseUrl}/api/chat`, {
     method: 'POST',
     signal,
@@ -102,7 +101,7 @@ async function* streamOllama(config: any, messages: {role: string, content: stri
         const parsed = JSON.parse(trimmed)
         if (parsed.message?.content) yield parsed.message.content
         if (parsed.done) return
-      } catch {}
+      } catch { /* ignore */ }
     }
   }
 }
@@ -142,7 +141,7 @@ export function AiDigestView() {
   }, [])
 
   // Clear chat if knowledge base filters change
-  const handleFilterChange = (setter: any, val: any) => {
+  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, val: string) => {
     if (messages.length > 0) {
       if (!window.confirm("Changer les filtres effacera la conversation en cours. Continuer ?")) {
         return
@@ -201,7 +200,7 @@ export function AiDigestView() {
       const isGenericSummary = lower.includes('résumé exhaustif')
       const isNewsAlert = lower.includes('annonces importantes') || lower.includes('annonces clés')
       
-      const params: any = { 
+      const params: Record<string, string | number | boolean | undefined> = { 
         timeframe: timeframe,
         search_query: (isGenericSummary || isNewsAlert) ? undefined : contentToSend 
       }
@@ -219,13 +218,13 @@ export function AiDigestView() {
       if (articles.length > 0) {
         setContextSources(prev => {
           const dict = [...prev]
-          articles.forEach((a: any) => {
+          articles.forEach((a: {id: number, url: string, title: string}) => {
             if (!dict.find(s => s.id === a.id)) dict.push({ id: a.id, url: a.url, title: a.title })
           })
           return dict
         })
 
-        const contextBlocks = articles.map((a: any) => `<source id="${a.id}">
+        const contextBlocks = articles.map((a: {id: number, url: string, title: string, content: string}) => `<source id="${a.id}">
   <metadata>
     Titre: ${a.title}
     ID DE RÉFÉRENCE: ${a.id}

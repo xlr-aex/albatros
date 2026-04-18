@@ -11,15 +11,17 @@ import styles from './ArticleReader.module.css'
 import { formatDate, unescapeHtml } from '../../utils/format'
 import { HighlightText } from './HighlightText'
 
-/** Strips HTML tags and returns plain text — used to feed the AI. */
-function extractPlainText(html: string): string {
-  const div = document.createElement('div')
-  div.innerHTML = html
-  return (div.textContent ?? div.innerText ?? '').replace(/\s+/g, ' ').trim()
+interface RedditComment {
+  id: number | string
+  author: string
+  is_submitter?: boolean
+  score?: number
+  published_at?: number
+  content_html?: string
+  replies?: RedditComment[]
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const CommentNode = ({ comment, depth = 0 }: { comment: any, depth?: number }) => {
+const CommentNode = ({ comment, depth = 0 }: { comment: RedditComment; depth?: number }) => {
   return (
     <div style={{ 
       marginTop: depth === 0 ? '1rem' : '0.25rem',
@@ -34,7 +36,7 @@ const CommentNode = ({ comment, depth = 0 }: { comment: any, depth?: number }) =
           {comment.is_submitter && (
             <span style={{ fontSize: '0.7em', fontWeight: 'bold', background: 'var(--accent-color)', color: '#fff', padding: '0 4px', borderRadius: '4px' }}>OP</span>
           )}
-          <span>{comment.score} pts</span>
+          <span>{comment.score ?? 0} pts</span>
           <span>·</span>
           <time>{comment.published_at ? formatDate(comment.published_at) : ''}</time>
         </div>
@@ -47,21 +49,18 @@ const CommentNode = ({ comment, depth = 0 }: { comment: any, depth?: number }) =
       
       {comment.replies && comment.replies.length > 0 && (
         <div className="comment-replies" style={{ display: 'flex', flexDirection: 'column', marginTop: '0.25rem' }}>
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {comment.replies.map((r: any) => <CommentNode key={r.id} comment={r} depth={depth + 1} />)}
+          {comment.replies.map((r: RedditComment) => <CommentNode key={r.id} comment={r} depth={depth + 1} />)}
         </div>
       )}
     </div>
   )
 }
 
-/** Physically isolates the HTML DOM string from React Virtual DOM engine reconciliations. */
 const ArticleContentNode = React.memo(({ htmlToRender }: { htmlToRender: string }) => {
   if (!htmlToRender) return null
   return <div key="main-reader-content" className="article-body article-reader--content" dangerouslySetInnerHTML={{ __html: htmlToRender }} />
 })
 
-/** Physically isolates the legacy youtube iframe string from React Virtual DOM engine reconciliations. */
 const RetroPlayerNode = React.memo(({ 
   ytVideoId, 
   hasNewPlayer, 
@@ -72,12 +71,59 @@ const RetroPlayerNode = React.memo(({
   isActive: boolean; 
 }) => {
   if (!ytVideoId || hasNewPlayer) return null
-  const html = isActive
-    ? `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${ytVideoId}?autoplay=1&dnt=1" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
-    : `<a href="https://www.youtube.com/watch?v=${ytVideoId}" target="_blank" rel="noopener noreferrer" class="youtube-player-preview"><img src="https://i.ytimg.com/vi/${ytVideoId}/maxresdefault.jpg" onerror="this.src='https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg'" alt="YouTube Video" /><div class="youtube-player-overlay"><div class="youtube-play-button"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div><div class="youtube-pill">YouTube</div></div></a>`
   
-  return <div key="retro-player" className="youtube-player-container" dangerouslySetInnerHTML={{ __html: html }} />
+  if (isActive) {
+    return (
+      <div className="youtube-player-container">
+        <iframe 
+          width="100%" 
+          height="100%" 
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&dnt=1&origin=http://localhost:5173`} 
+          frameBorder="0" 
+          referrerPolicy="strict-origin-when-cross-origin" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          allowFullScreen 
+          style={{ aspectRatio: '16/9', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', background: '#000' }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="youtube-player-container">
+      <a 
+        href={`https://www.youtube.com/watch?v=${ytVideoId}`} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="youtube-player-preview"
+      >
+        <img 
+          src={`https://i.ytimg.com/vi/${ytVideoId}/maxresdefault.jpg`} 
+          onError={e => { (e.currentTarget as HTMLImageElement).src = `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg` }} 
+          alt="YouTube Video" 
+        />
+        <div className="youtube-player-overlay">
+          <div className="youtube-play-button">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+          <div className="youtube-pill">YouTube</div>
+        </div>
+      </a>
+    </div>
+  )
 })
+
+type WebviewLoadingEvent = Event & {
+  errorCode?: number
+  errorDescription?: string
+}
+
+type HTMLWebViewElement = HTMLElement & {
+  addEventListener(event: string, listener: (e: WebviewLoadingEvent) => void): void
+  removeEventListener(event: string, listener: (e: WebviewLoadingEvent) => void): void
+}
 
 export function ArticleReader() {
   const { selectedArticle, isLoadingArticle, updateArticleFlag, currentSearchQuery } = useArticleStore()
@@ -85,13 +131,11 @@ export function ArticleReader() {
   const [linkPopup, setLinkPopup] = useState<{ url: string; x: number; y: number } | null>(null)
   const [embeddedUrl, setEmbeddedUrl] = useState<string | null>(null)
   const [isScrolled, setIsScrolled] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const webviewRef = useRef<any>(null)
+  const webviewRef = useRef<HTMLWebViewElement>(null)
   const [isWebviewLoading, setIsWebviewLoading] = useState(false)
   const [webviewError, setWebviewError] = useState<string | null>(null)
   
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [liveComments, setLiveComments] = useState<any[]>([])
+  const [liveComments, setLiveComments] = useState<RedditComment[]>([])
   const [isLoadingComments, setIsLoadingComments] = useState(false)
   const [activeYtVideos, setActiveYtVideos] = useState<string[]>([])
   const [redditSelftext, setRedditSelftext] = useState<string | null>(null)
@@ -110,8 +154,8 @@ export function ArticleReader() {
     if (selectedArticle?.url && selectedArticle.url.includes('reddit.com')) {
       setIsLoadingComments(true)
       window.api.articles.getRedditComments(selectedArticle.url)
-        .then((res: any) => {
-          setLiveComments(res.comments || res)
+        .then((res: { comments: RedditComment[], selftextHtml?: string }) => {
+          setLiveComments(res.comments || (res as Record<string, unknown>))
           if (res.selftextHtml) setRedditSelftext(res.selftextHtml)
         })
         .catch(console.error)
@@ -119,7 +163,7 @@ export function ArticleReader() {
     }
   }, [selectedArticle?.id, selectedArticle?.url])
 
-  // Track webview load state — show overlay immediately, remove on stop
+  // Track webview load state
   useEffect(() => {
     if (!embeddedUrl) return
 
@@ -129,11 +173,9 @@ export function ArticleReader() {
     const wv = webviewRef.current
     if (!wv) return
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onStart = () => { setIsWebviewLoading(true); setWebviewError(null) }
     const onStop  = () => setIsWebviewLoading(false)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onFail  = (e: any) => {
+    const onFail  = (e: WebviewLoadingEvent) => {
       if (e.errorCode === -3) return // ERR_ABORTED — normal for redirects
       setIsWebviewLoading(false)
       setWebviewError(`Could not load page (${e.errorDescription || 'unknown error'})`)
@@ -181,8 +223,6 @@ export function ArticleReader() {
   }
 
   function openInApp(url: string) {
-    // Reddit's new SPA blocks embedding and detects Electron — old.reddit.com is
-    // plain HTML, embedding-friendly, and loads far faster.
     const targetUrl = /reddit\.com/i.test(url)
       ? url.replace(/https?:\/\/(?:www\.|new\.|np\.)?reddit\.com/i, 'https://old.reddit.com')
       : url
@@ -214,31 +254,46 @@ export function ArticleReader() {
       })
     : null
 
+  // Safely inject highlight tags only into text nodes
   const highlightedHtml = React.useMemo(() => {
     if (!safeHtml || !currentSearchQuery) return safeHtml
     
     const q = currentSearchQuery.trim()
     if (!q) return safeHtml
     
-    const exact = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const words = q.split(/\s+/).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const allMatches = [q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), ...words].sort((a, b) => b.length - a.length)
+    const regex = new RegExp(`(${allMatches.join('|')})`, 'gi')
     
-    // Sort words by length descending so longer words match first, preventing subset splitting
-    const allMatches = [exact, ...words].sort((a, b) => b.length - a.length)
-    const pattern = `(${allMatches.join('|')})`
+    const doc = new DOMParser().parseFromString(safeHtml, 'text/html')
+    const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null)
     
-    // Safe lookup ensuring we only highlight text content and NOT HTML attributes 
-    // by splitting the string into tags and text nodes.
-    const parts = safeHtml.split(/(<[^>]*>)/g)
-    const regex = new RegExp(`(${pattern})`, 'gi')
-    
-    return parts.map((part, i) => {
-      // Text nodes are at even indices, HTML tags at odd indices
-      if (i % 2 === 0) {
-        return part.replace(regex, '<mark style="background: yellow; color: #000; font-weight: 600; border-radius: 2px; padding: 0 2px;">$1</mark>')
+    const nodesToReplace: Text[] = []
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue && regex.test(node.nodeValue)) {
+        nodesToReplace.push(node as Text)
       }
-      return part
-    }).join('')
+    }
+    
+    for (const textNode of nodesToReplace) {
+      if (!textNode.nodeValue) continue
+      const frag = document.createDocumentFragment()
+      const parts = textNode.nodeValue.split(regex)
+      for (const part of parts) {
+        if (regex.test(part)) {
+          const mark = document.createElement('mark')
+          mark.style.cssText = 'background: yellow; color: #000; font-weight: 600; border-radius: 2px; padding: 0 2px;'
+          mark.textContent = part 
+          frag.appendChild(mark)
+        } else if (part) {
+          frag.appendChild(document.createTextNode(part))
+        }
+      }
+      textNode.parentNode?.replaceChild(frag, textNode)
+    }
+    
+    return doc.body.innerHTML
   }, [safeHtml, currentSearchQuery])
 
   if (isLoadingArticle && !selectedArticle) {
@@ -254,8 +309,7 @@ export function ArticleReader() {
     )
   }
 
-  const { id, title, author, published_at, url, feed_title, feed_favicon, word_count, is_saved } = selectedArticle
-
+  const { id, title, author, published_at, url, feed_title, feed_favicon, is_saved } = selectedArticle
 
   async function toggleSave() {
     const next = !is_saved
@@ -288,7 +342,6 @@ export function ArticleReader() {
           </div>
 
           <div className={styles.embeddedBody}>
-            {/* Loading overlay — sits above the webview while it initialises */}
             {isWebviewLoading && (
               <div className={styles.embeddedLoading}>
                 <div className={styles.embeddedProgressBar}>
@@ -312,6 +365,7 @@ export function ArticleReader() {
               </div>
             ) : (
               <webview
+                // @ts-expect-error - Webview tag is valid in Electron react but dom bindings may lack it
                 ref={webviewRef}
                 className={styles.embeddedFrame}
                 src={embeddedUrl}
@@ -338,7 +392,7 @@ export function ArticleReader() {
           onScroll={handleScroll}
         >
           <div className={styles.contentWrapper}>
-            {/* ── Header Information (Scrolls Away) ─────────── */}
+            {/* ── Header Information ─────────── */}
             <header className={styles.header}>
               <div className={styles.meta}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -369,7 +423,7 @@ export function ArticleReader() {
               {author && <p className={styles.author}>by {author}</p>}
             </header>
 
-            {/* ── Sticky Action Bar (Fixed at Top) ───────────── */}
+            {/* ── Sticky Action Bar ───────────── */}
             <div className={`${styles.stickyActions} ${isScrolled ? styles.stickyActionsScrolled : ''}`}>
               <div className={styles.actions}>
                 <button
@@ -412,12 +466,8 @@ export function ArticleReader() {
               if (!selectedArticle) return null
 
               let baseHtml = highlightedHtml || selectedArticle.content_html || ''
-              
-              // Retroactive fix for cached YouTube articles 
-              // Strips out the old red '▶' widget to remove the "useless triangle"
               baseHtml = baseHtml.replace(/<div class="youtube-thumbnail-wrapper"[\s\S]*?<\/div>\s*<\/a>\s*<\/div>/g, '')
 
-              // Lock the HTML string in place if the user is currently watching a video.
               if (activeYtVideos.length > 0) {
                 if (frozenContentHtmlRef.current === null) {
                   frozenContentHtmlRef.current = baseHtml
@@ -429,21 +479,34 @@ export function ArticleReader() {
 
               let htmlToRender = baseHtml
 
-              // Dynamically replace active youtube previews with iframes in the locked HTML string.
-              activeYtVideos.forEach(vid => {
-                const regex = new RegExp(`<a href="[^"]*${vid}"[^>]*class="youtube-player-preview"[^>]*>[\\s\\S]*?</a>`, 'gi')
-                htmlToRender = htmlToRender.replace(
-                  regex,
-                  `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/${vid}?autoplay=1&dnt=1" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;"></iframe>`
-                )
-              })
+              // Safely swap active yt videos using DOMParser
+              if (activeYtVideos.length > 0 && htmlToRender) {
+                 const doc = new DOMParser().parseFromString(htmlToRender, 'text/html')
+                 activeYtVideos.forEach(vid => {
+                    const links = doc.querySelectorAll('a.youtube-player-preview')
+                    links.forEach(link => {
+                       const href = link.getAttribute('href')
+                       if (href && href.includes(vid)) {
+                          const iframe = document.createElement('iframe')
+                          iframe.width = '100%'
+                          iframe.height = '100%'
+                          iframe.src = `https://www.youtube.com/embed/${vid}?autoplay=1&dnt=1&origin=http://localhost:5173`
+                          iframe.setAttribute('frameborder', '0')
+                          iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
+                          iframe.allowFullscreen = true
+                          iframe.style.cssText = 'aspect-ratio: 16/9; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); background: #000;'
+                          link.replaceWith(iframe)
+                       }
+                    })
+                 })
+                 htmlToRender = doc.body.innerHTML
+              }
 
               const ytVideoIdMatch = selectedArticle.url?.match(/(?:v=|\/)([\w-]{11})(?:\?|&|$)/)
               const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
               const hasNewPlayer = htmlToRender.includes('youtube-player-container')
 
               // ── Robust Reddit content deduplication ────────────────────────
-              // Normalize: strip HTML, collapse whitespace, lowercase
               const normalize = (s: string) =>
                 s.replace(/<[^>]+>/g, ' ').replace(/&\w+;/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
 
@@ -455,34 +518,24 @@ export function ArticleReader() {
                 const normBase = normalize(selectedArticle?.content_html || '')
 
                 if (normReddit.length < 10) {
-                  // API selftext is trivial (empty / link-only) — skip it
                   showRedditSelftext = false
                 } else if (normBase.length < 30) {
-                  // RSS content is trivial — the API selftext is the real content.
-                  // Use it as the main body instead of showing a bubble + empty body.
                   useSelftextAsMain = true
                 } else {
-                  // Both have content — check for overlap.
-                  // Use 40-char prefix of the shorter text as a fingerprint.
                   const shorter = normReddit.length < normBase.length ? normReddit : normBase
                   const longer = normReddit.length < normBase.length ? normBase : normReddit
                   const probe = shorter.substring(0, Math.min(40, shorter.length))
 
                   if (longer.includes(probe)) {
-                    // Substantial overlap → they're the same content.
-                    // Prefer API selftext if it's longer/richer. Replace main, don't bubble.
                     if (normReddit.length > normBase.length * 0.8) {
                       useSelftextAsMain = true
                     }
-                    // Otherwise the RSS version is already good — skip the selftext.
                   } else {
-                    // Genuinely different content → show selftext as supplement
                     showRedditSelftext = true
                   }
                 }
               }
 
-              // When API selftext replaces RSS content, swap the HTML to render
               if (useSelftextAsMain) {
                 htmlToRender = DOMPurify.sanitize(redditSelftext!, { FORCE_BODY: true })
               }
@@ -560,8 +613,8 @@ export function ArticleReader() {
             role="dialog"
             aria-label="Link options"
             style={{
-              top: Math.min(linkPopup.y, window.innerHeight - 100),
-              left: Math.min(linkPopup.x, window.innerWidth - 160),
+               top: Math.max(0, Math.min(linkPopup.y, window.innerHeight - 100)),
+               left: Math.max(0, Math.min(linkPopup.x, window.innerWidth - 160)),
             }}
             onKeyDown={e => { if (e.key === 'Escape') setLinkPopup(null) }}
           >

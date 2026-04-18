@@ -6,8 +6,7 @@
  * caller.  Helper getters for common settings are provided for convenience.
  */
 
-import type { Database } from 'sql.js'
-import { persistDatabase } from '../db/connection'
+import type { Database } from 'better-sqlite3'
 
 // ─── Known setting keys (typed for autocompletion + safety) ──────────────────
 
@@ -41,33 +40,31 @@ export class SettingsService {
 
   /** Returns the raw string value of a setting, or null if not found. */
   get(key: SettingKey): string | null {
-    const result = this.db.exec('SELECT value FROM settings WHERE key = ?', [key])
-    if (!result.length || !result[0].values.length) return null
-    const raw = result[0].values[0][0]
-    return raw !== null ? String(raw) : null
+    const stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?')
+    const row = stmt.get(key) as { value: unknown } | undefined
+    return row?.value !== undefined && row.value !== null ? String(row.value) : null
   }
 
   /** Returns all settings as a plain object. */
   getAll(): Record<string, string> {
-    const result = this.db.exec('SELECT key, value FROM settings')
-    if (!result.length) return {}
+    const stmt = this.db.prepare('SELECT key, value FROM settings')
+    const rows = stmt.all() as { key: unknown, value: unknown }[]
     const out: Record<string, string> = {}
-    for (const [key, value] of result[0].values) {
-      if (key !== null) out[String(key)] = value !== null ? String(value) : ''
+    for (const row of rows) {
+      if (row.key !== null) out[String(row.key)] = row.value !== null ? String(row.value) : ''
     }
     return out
   }
 
   /** Sets a single key.  Upserts if the key already exists. */
   set(key: SettingKey, value: string): void {
-    this.db.run(
-      `INSERT INTO settings (key, value, updated_at)
+    const stmt = this.db.prepare(`
+       INSERT INTO settings (key, value, updated_at)
        VALUES (?, ?, strftime('%s','now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value,
-                                       updated_at = excluded.updated_at`,
-      [key, value],
-    )
-    persistDatabase()
+                                      updated_at = excluded.updated_at
+    `)
+    stmt.run(key, value)
   }
 
   // ── Typed convenience getters ─────────────────────────────────────────────

@@ -61,14 +61,19 @@ export function SettingsPanel({ onClose }: Props) {
     void load()
   }, [])
 
-  function update(key: keyof Settings, value: string) {
-    setSettings(s => ({ ...s, [key]: value }))
+  const update = useCallback((key: keyof Settings, value: string) => {
+    setSettings(s => {
+      const next = { ...s, [key]: value }
+      if (key === 'ai_provider') {
+        const defaultUrl = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
+        next.ai_base_url = defaultUrl
+      }
+      return next
+    })
 
-    // When provider changes, auto-set the default base URL
     if (key === 'ai_provider') {
       const defaultUrl = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-      setSettings(s => ({ ...s, ai_provider: value, ai_base_url: defaultUrl }))
-      window.api.settings.set('ai_base_url' as any, defaultUrl).catch(console.error)
+      window.api.settings.set('ai_base_url', defaultUrl).catch(console.error)
       setAiTestStatus('idle')
       setAiTestMsg('')
     }
@@ -77,7 +82,6 @@ export function SettingsPanel({ onClose }: Props) {
       setAiTestMsg('')
     }
     
-    // Apply visual settings instantly
     if (key === 'theme') {
       useUiStore.getState().setTheme(value as 'light' | 'dark')
     } else if (key === 'font_size') {
@@ -88,9 +92,8 @@ export function SettingsPanel({ onClose }: Props) {
       applyAccentColor(value)
     }
     
-    // Fire-and-forget DB update to avoid blocking slider dragging
-    window.api.settings.set(key as any, value).catch(console.error)
-  }
+    window.api.settings.set(key, value).catch(console.error)
+  }, [])
 
   const testConnection = useCallback(async () => {
     setAiTestStatus('testing')
@@ -113,8 +116,8 @@ export function SettingsPanel({ onClose }: Props) {
       const data = await res.json()
       // Extract model list for a friendly message
       const models: string[] = provider === 'ollama'
-        ? (data.models ?? []).map((m: any) => m.name)
-        : (data.data ?? []).map((m: any) => m.id)
+        ? (data.models ?? []).map((m: {name: string}) => m.name)
+        : (data.data ?? []).map((m: {id: string}) => m.id)
       const modelList = models.slice(0, 5)
       const modelHint = modelList.length > 0 ? `Modèles : ${modelList.join(', ')}` : 'Connecté !'
       setAiTestMsg(modelHint)
@@ -128,7 +131,7 @@ export function SettingsPanel({ onClose }: Props) {
       setAiTestMsg((err as Error).message ?? String(err))
       setAiTestStatus('error')
     }
-  }, [settings.ai_base_url, settings.ai_provider])
+  }, [settings.ai_base_url, settings.ai_provider, settings.ai_model, update])
 
   if (!loaded) return null
 
