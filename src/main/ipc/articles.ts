@@ -28,6 +28,10 @@ export function registerArticleHandlers(
     return articleService.list(params)
   })
 
+  ipcMain.handle('articles:getForDigest', (_event, params: any) => {
+    return articleService.getForDigest(params)
+  })
+
   /** Returns the full article including HTML content. */
   ipcMain.handle('articles:get', (_event, id: number) => {
     return articleService.getById(id)

@@ -229,6 +229,87 @@ export class ArticleService {
     return values.map(row => rowToSummary(columns, row))
   }
 
+  /**
+   * Récupère un lot d'articles tronqués pour les injecter dans un RAG/Digest.
+   */
+  getForDigest(params: ArticleListParams & { limit?: number; search_query?: string; timeframe?: string }): { id: number; url: string; title: string; content: string }[] {
+    let limit = params.limit ?? 10000 // Scan massif jusqu'à 10 000 articles
+    let conditions: string[] = []
+    let bindings: (string | number)[] = []
+    let fromClause = 'FROM articles a JOIN feeds f ON f.id = a.feed_id'
+    
+    // Troncation plus agressive (150 au lieu de 400) pour permettre d'injecter 10x plus d'articles.
+    let selectContent = 'SUBSTR(COALESCE(a.content_text, a.excerpt, ""), 1, 150) AS content'
+
+    if (params.search_query) {
+      // Filtrage des Stopwords français basiques et ponctuation pour transformer une phrase naturelle en requête de mots-clés FTS
+      const stopWords = new Set(['le','la','les','un','une','des','de','du','et','ou','est','sont','a','à','en','pour','qui','que','quoi','dont','où','dans','sur','sous','vers','avec','sans','fais','fait','moi','peux','tu','je','il','elle','on','nous','vous','ils','elles','pas','ne','plus','moins','très','trop','quel','quelle','quels','quelles','comment','pourquoi','quand','combien','ce','cet','cette','ces','mon','ton','son','ma','ta','sa','mes','tes','ses','notre','votre','leur','nos','vos','leurs', 'quoi', 'tout', 'tous', 'résumé', 'resumé', 'résume', 'resume', 'donne', 'parle', 'dis', 'actu', 'actualité', 'actualités', 'news', 'nouveau', 'nouveaux', 'nouvelles', 'article', 'articles'])
+
+      const words = params.search_query.trim()
+        .toLowerCase()
+        .replace(/[^\w\s\u00C0-\u017F]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 1 && !stopWords.has(w))
+
+      if (words.length > 0) {
+        fromClause += ' JOIN articles_fts fts ON fts.docid = a.id'
+        const ftsQuery = words.map(w => `"${w}"*`).join(' OR ')
+        conditions.push('articles_fts MATCH ?')
+        bindings.push(ftsQuery)
+        
+        // Snippet FTS4 plus court pour la recherche profonde
+        selectContent = "snippet(articles_fts, '[[', ']]', '...', -1, 40) AS content"
+        limit = 10000 
+      }
+    }
+
+    if (params.feed_id !== undefined) {
+      conditions.push('a.feed_id = ?')
+      bindings.push(params.feed_id)
+    }
+    if (params.group_id !== undefined) {
+      conditions.push('f.group_id = ?')
+      bindings.push(params.group_id)
+    }
+    if (params.today_only || params.timeframe === 'today') {
+      const offset = 86400
+      conditions.push('a.published_at >= ?')
+      bindings.push(Math.floor(Date.now() / 1000) - offset)
+    } else if (params.timeframe === 'week') {
+      const offset = 86400 * 7
+      conditions.push('a.published_at >= ?')
+      bindings.push(Math.floor(Date.now() / 1000) - offset)
+    } else if (params.timeframe === 'month') {
+      const offset = 86400 * 30
+      conditions.push('a.published_at >= ?')
+      bindings.push(Math.floor(Date.now() / 1000) - offset)
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    const sql = `
+      SELECT a.id, a.url, a.title, ${selectContent}
+      ${fromClause}
+      ${where}
+      ORDER BY a.published_at DESC
+      LIMIT ?
+    `
+    bindings.push(limit)
+
+    const result = this.db.exec(sql, bindings)
+    if (!result.length || !result[0].values.length) return []
+    
+    return result[0].values.map(row => ({
+      id: Number(row[0] || 0),
+      url: String(row[1] || '#'),
+      title: String(row[2] || 'Unknown Title'),
+      // Si c'est un snippet, c'est déjà condensé. Sinon on truncate à 800 caractères.
+      content: params.search_query && selectContent.includes('snippet') 
+        ? String(row[3] || '') 
+        : String(row[3] || '').substring(0, 800)
+    }))
+  }
+
   /** Returns the full article (including HTML content) for the reader pane. */
   getById(id: number): Article | null {
     const sql = `

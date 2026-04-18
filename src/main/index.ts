@@ -67,6 +67,7 @@ function createWindow(): BrowserWindow {
       nodeIntegration:  false,   // Never allow node in renderer
       sandbox:          false,   // Needed for sql.js WASM in preload
       webviewTag:       true,    // Enable <webview> for embedded browser
+      webSecurity:      false,   // Bypass CORS/CSP for direct local AI api calls
     },
   })
 
@@ -143,6 +144,26 @@ async function bootstrap(): Promise<void> {
   } catch (err) {
     console.error('[Embed] Failed to set up Reddit header intercept:', err)
     // Non-fatal
+  }
+
+  // ── 0c. Local AI CORS bypass ────────────────────────────────────────────
+  //    Bypass CORS restrictions when fetching local AI endpoints from renderer.
+  try {
+    session.defaultSession.webRequest.onHeadersReceived(
+      { urls: ['http://localhost:*/*', 'http://127.0.0.1:*/*'] },
+      (details, callback) => {
+        const headers: Record<string, string[]> = {}
+        for (const [key, val] of Object.entries(details.responseHeaders ?? {})) {
+          headers[key] = val as string[]
+        }
+        headers['access-control-allow-origin'] = ['*']
+        headers['access-control-allow-headers'] = ['*']
+        callback({ responseHeaders: headers })
+      }
+    )
+    console.log('[AI] Local CORS bypass active')
+  } catch (err) {
+    console.error('[AI] Failed to set up CORS bypass:', err)
   }
 
   // ── 1. Database ──────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { ArticleList } from './components/layout/ArticleList'
 import { ArticleReader } from './components/layout/ArticleReader'
 import { GithubLinksView } from './components/layout/GithubLinksView'
+import { AiDigestView } from './components/layout/AiDigestView'
 import { useFeedStore } from './store/feedStore'
 import { useArticleStore } from './store/articleStore'
 import { useUiStore, subscribeSyncEvents } from './store/uiStore'
@@ -128,6 +129,8 @@ export default function App() {
       
       {selection.type === 'github' ? (
         <GithubLinksView />
+      ) : selection.type === 'digest' ? (
+        <AiDigestView />
       ) : (
         <>
           <ArticleList />

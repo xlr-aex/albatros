@@ -23,6 +23,13 @@ export type SettingKey =
   | 'max_articles_per_feed'
   | 'sidebar_width'
   | 'article_list_width'
+  // ── AI Summary ───────────────────────────────────────────────────────────
+  | 'ai_provider'
+  | 'ai_model'
+  | 'ai_system_prompt'
+  | 'ai_base_url'
+  | 'ai_chatbot_summary_prompt'
+  | 'ai_chatbot_news_prompt'
 
 export type Theme       = 'dark' | 'light'
 export type ReadingPane = 'right' | 'bottom' | 'off'
@@ -83,5 +90,24 @@ export class SettingsService {
 
   get defaultIntervalSec(): number {
     return parseInt(this.get('default_interval_sec') ?? '900', 10)
+  }
+
+  get aiProvider(): string {
+    return this.get('ai_provider') || 'lmstudio'
+  }
+
+  get aiModel(): string {
+    return this.get('ai_model') || ''
+  }
+
+  get aiBaseUrl(): string {
+    return this.get('ai_base_url') || 'http://127.0.0.1:1234'
+  }
+
+  get aiSystemPrompt(): string {
+    return (
+      this.get('ai_system_prompt') ||
+      "Tu es un assistant de lecture. Résume l'article suivant en français en 3-5 points clés, de manière concise et claire. Commence directement par les points clés sans introduction."
+    )
   }
 }

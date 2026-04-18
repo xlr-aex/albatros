@@ -37,8 +37,9 @@ const api = {
 
   // ── Articles ─────────────────────────────────────────────────────────────
   articles: {
-    list:        (params: ArticleListParams)                => ipcRenderer.invoke('articles:list', params),
-    get:         (id: number)                               => ipcRenderer.invoke('articles:get', id),
+    list:          (params: ArticleListParams)                => ipcRenderer.invoke('articles:list', params),
+    getForDigest:  (params: any)                              => ipcRenderer.invoke('articles:getForDigest', params),
+    get:           (id: number)                               => ipcRenderer.invoke('articles:get', id),
     totalUnread: ()                                         => ipcRenderer.invoke('articles:total-unread'),
     mark:        (id: number, action: 'read' | 'starred' | 'saved', value: boolean) => ipcRenderer.invoke('articles:mark', id, action, value),
     markAllRead: (feedId?: number)                          => ipcRenderer.invoke('articles:mark-all-read', feedId),

@@ -35,7 +35,7 @@ export interface Feed {
 
 // ─── View types (built-in navigation entries) ─────────────────────────────────
 
-export type SystemView = 'all' | 'unread' | 'saved' | 'today' | 'github'
+export type SystemView = 'all' | 'unread' | 'saved' | 'today' | 'github' | 'digest'
 export type SelectionType = SystemView | 'feed' | 'group' | 'search'
 
 export interface FeedSelection {

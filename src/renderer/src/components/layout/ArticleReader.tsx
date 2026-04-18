@@ -11,6 +11,13 @@ import styles from './ArticleReader.module.css'
 import { formatDate, unescapeHtml } from '../../utils/format'
 import { HighlightText } from './HighlightText'
 
+/** Strips HTML tags and returns plain text — used to feed the AI. */
+function extractPlainText(html: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = html
+  return (div.textContent ?? div.innerText ?? '').replace(/\s+/g, ' ').trim()
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CommentNode = ({ comment, depth = 0 }: { comment: any, depth?: number }) => {
   return (
@@ -398,8 +405,8 @@ export function ArticleReader() {
               </div>
             </div>
 
-            <div className={styles.divider} style={{ marginBottom: 'var(--space-6)' }} />
-            
+            <div className={styles.divider} style={{ marginBottom: 'var(--space-4)' }} />
+
             {/* ── Article Content ──────────────────────────── */}
             {(() => {
               if (!selectedArticle) return null
