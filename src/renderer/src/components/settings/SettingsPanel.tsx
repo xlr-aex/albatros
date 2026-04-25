@@ -149,77 +149,67 @@ export function SettingsPanel({ onClose }: Props) {
         </div>
 
         <div className={styles.body}>
-          {/* ── Appearance ────────────────────────────── */}
+          {/* ── Apparence ────────────────────────────── */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Appearance</div>
+            <div className={styles.sectionTitle}>Apparence</div>
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Theme</div>
-                <div className={styles.rowDesc}>Choose between dark and light mode</div>
+                <div className={styles.rowName}>Thème</div>
+                <div className={styles.rowDesc}>Choisissez entre le mode clair et sombre</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px', opacity: settings.theme === 'light' ? 1 : 0.5 }}>☀️</span>
-                <div
-                  className={`${styles.toggle} ${settings.theme === 'dark' ? styles.toggleOn : ''}`}
-                  onClick={() => update('theme', settings.theme === 'dark' ? 'light' : 'dark')}
-                  onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); update('theme', settings.theme === 'dark' ? 'light' : 'dark') } }}
-                  role="switch"
-                  tabIndex={0}
-                  aria-checked={settings.theme === 'dark'}
-                  aria-label="Dark mode"
-                />
-                <span style={{ fontSize: '14px', opacity: settings.theme === 'dark' ? 1 : 0.5 }}>🌙</span>
+              <div className={styles.segmentedControl}>
+                <button
+                  className={`${styles.segmentBtn} ${settings.theme === 'light' ? styles.segmentBtnActive : ''}`}
+                  onClick={() => update('theme', 'light')}
+                  aria-pressed={settings.theme === 'light'}
+                >
+                  <span className={styles.segmentIcon}>☀️</span> Clair
+                </button>
+                <button
+                  className={`${styles.segmentBtn} ${settings.theme === 'dark' ? styles.segmentBtnActive : ''}`}
+                  onClick={() => update('theme', 'dark')}
+                  aria-pressed={settings.theme === 'dark'}
+                >
+                  <span className={styles.segmentIcon}>🌙</span> Sombre
+                </button>
               </div>
             </div>
 
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Accent Color</div>
-                <div className={styles.rowDesc}>Choose any color or pick a preset</div>
+            <div className={styles.row} style={{ alignItems: 'flex-start' }}>
+              <div className={styles.rowLabel} style={{ marginTop: '4px' }}>
+                <div className={styles.rowName}>Couleur d'accentuation</div>
+                <div className={styles.rowDesc}>Personnalisez la couleur principale de l'interface</div>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className={styles.colorPalette}>
                 {Object.entries(ACCENT_COLORS).map(([colorName, hexes]) => (
                   <button
                     key={colorName}
                     title={colorName}
-                    aria-label={`Accent color: ${colorName}`}
+                    aria-label={`Couleur: ${colorName}`}
                     aria-pressed={settings.accent_color === colorName}
-                    style={{
-                      width: '22px', height: '22px', borderRadius: '50%',
-                      background: hexes[500],
-                      border: settings.accent_color === colorName ? '2px solid white' : '2px solid transparent',
-                      boxShadow: settings.accent_color === colorName ? `0 0 0 2px ${hexes[500]}` : 'none',
-                      flexShrink: 0,
-                    }}
+                    className={`${styles.colorSwatch} ${settings.accent_color === colorName ? styles.colorSwatchActive : ''}`}
+                    style={{ '--swatch-color': hexes[500] } as React.CSSProperties}
                     onClick={() => update('accent_color', colorName)}
-                  />
+                  >
+                    {settings.accent_color === colorName && <span className={styles.checkIcon}>✓</span>}
+                  </button>
                 ))}
-                {/* Separator */}
-                <span style={{ width: 1, height: 20, background: 'var(--border-subtle)', flexShrink: 0 }} />
-                {/* Native color picker — any color */}
+                
+                <div className={styles.colorDivider} />
+                
                 <label
-                  title="Custom color"
-                  aria-label="Custom accent color"
-                  style={{
-                    width: '22px', height: '22px', borderRadius: '50%',
-                    background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)',
-                    cursor: 'pointer',
-                    boxShadow: settings.accent_color?.startsWith('#') ? '0 0 0 2px var(--brand-500), 0 0 0 4px white' : 'none',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  title="Couleur personnalisée"
+                  className={`${styles.colorSwatch} ${styles.colorSwatchCustom} ${settings.accent_color?.startsWith('#') ? styles.colorSwatchActive : ''}`}
+                  style={{ '--swatch-color': settings.accent_color?.startsWith('#') ? settings.accent_color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' } as React.CSSProperties}
                 >
+                  {settings.accent_color?.startsWith('#') && <span className={styles.checkIcon}>✓</span>}
                   <input
                     type="color"
-                    aria-label="Custom accent color picker"
+                    aria-label="Sélecteur de couleur personnalisée"
                     value={settings.accent_color?.startsWith('#') ? settings.accent_color : '#3b82f6'}
                     onChange={e => update('accent_color', e.target.value)}
-                    style={{ opacity: 0, position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                    className={styles.colorInputHidden}
                   />
                 </label>
               </div>
@@ -228,9 +218,9 @@ export function SettingsPanel({ onClose }: Props) {
             <div className={styles.row}>
               <div className={styles.rowLabel}>
                 <div className={styles.rowName}>
-                  UI Scale <span className={styles.fontValue}>{settings.ui_font_size}px</span>
+                  Taille de l'interface <span className={styles.fontValue}>{settings.ui_font_size}px</span>
                 </div>
-                <div className={styles.rowDesc}>Base size for the interface elements</div>
+                <div className={styles.rowDesc}>Taille de base pour les éléments de l'interface</div>
               </div>
               <input
                 type="range"
@@ -247,9 +237,9 @@ export function SettingsPanel({ onClose }: Props) {
             <div className={styles.row}>
               <div className={styles.rowLabel}>
                 <div className={styles.rowName}>
-                  Font Size <span className={styles.fontValue}>{settings.font_size}px</span>
+                  Taille du texte <span className={styles.fontValue}>{settings.font_size}px</span>
                 </div>
-                <div className={styles.rowDesc}>Base font size for article content</div>
+                <div className={styles.rowDesc}>Taille de base pour le contenu des articles</div>
               </div>
               <input
                 type="range"
@@ -271,7 +261,7 @@ export function SettingsPanel({ onClose }: Props) {
               background: 'var(--bg-base)',
             }}>
               <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                Text Preview
+                Aperçu du texte
               </div>
               <div style={{ fontSize: 'var(--article-font-size, 16px)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
                 Portez ce vieux whisky au juge blond qui fume.
@@ -281,14 +271,14 @@ export function SettingsPanel({ onClose }: Props) {
 
           <div className={styles.divider} />
 
-          {/* ── Reading ───────────────────────────────── */}
+          {/* ── Lecture ───────────────────────────────── */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Reading</div>
+            <div className={styles.sectionTitle}>Lecture</div>
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Mark as read on open</div>
-                <div className={styles.rowDesc}>Automatically mark articles as read when opened</div>
+                <div className={styles.rowName}>Marquer comme lu à l'ouverture</div>
+                <div className={styles.rowDesc}>Marquer automatiquement les articles comme lus lors de leur ouverture</div>
               </div>
               <div
                 className={`${styles.toggle} ${settings.mark_read_on_open === '1' ? styles.toggleOn : ''}`}
@@ -304,14 +294,14 @@ export function SettingsPanel({ onClose }: Props) {
 
           <div className={styles.divider} />
 
-          {/* ── Sync ─────────────────────────────────── */}
+          {/* ── Synchronisation ─────────────────────────────────── */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Sync & Storage</div>
+            <div className={styles.sectionTitle}>Synchronisation & Stockage</div>
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Refresh interval</div>
-                <div className={styles.rowDesc}>How often feeds are checked for new articles</div>
+                <div className={styles.rowName}>Intervalle de rafraîchissement</div>
+                <div className={styles.rowDesc}>Fréquence de vérification des nouveaux articles</div>
               </div>
               <select
                 className={styles.select}
@@ -322,15 +312,15 @@ export function SettingsPanel({ onClose }: Props) {
                 <option value="600">10 minutes</option>
                 <option value="900">15 minutes</option>
                 <option value="1800">30 minutes</option>
-                <option value="3600">1 hour</option>
-                <option value="7200">2 hours</option>
+                <option value="3600">1 heure</option>
+                <option value="7200">2 heures</option>
               </select>
             </div>
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Article retention</div>
-                <div className={styles.rowDesc}>Delete articles older than this many days</div>
+                <div className={styles.rowName}>Conservation des articles</div>
+                <div className={styles.rowDesc}>Supprimer les articles plus anciens que ce nombre de jours</div>
               </div>
               <input
                 type="number"
@@ -344,8 +334,8 @@ export function SettingsPanel({ onClose }: Props) {
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Max articles per feed</div>
-                <div className={styles.rowDesc}>Maximum number of articles stored per feed</div>
+                <div className={styles.rowName}>Articles max par flux</div>
+                <div className={styles.rowDesc}>Nombre maximum d'articles stockés par flux</div>
               </div>
               <input
                 type="number"

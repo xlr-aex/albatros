@@ -527,7 +527,9 @@ export function ArticleReader() {
                   const probe = shorter.substring(0, Math.min(40, shorter.length))
 
                   if (longer.includes(probe)) {
-                    if (normReddit.length > normBase.length * 0.8) {
+                    // Only replace the main content if the Reddit API text is significantly longer
+                    // (meaning the RSS feed truncated the post).
+                    if (normReddit.length > normBase.length * 1.5) {
                       useSelftextAsMain = true
                     }
                   } else {
@@ -537,7 +539,29 @@ export function ArticleReader() {
               }
 
               if (useSelftextAsMain) {
-                htmlToRender = DOMPurify.sanitize(redditSelftext!, { FORCE_BODY: true })
+                // If we are replacing the main content, try to rescue the images from the RSS feed
+                // because the Reddit API selftext usually lacks thumbnail/preview images.
+                let mediaHtml = ''
+                if (baseHtml) {
+                  const doc = new DOMParser().parseFromString(baseHtml, 'text/html')
+                  const images = doc.querySelectorAll('img')
+                  const addedSrcs = new Set<string>()
+                  
+                  images.forEach(img => {
+                    if (addedSrcs.has(img.src)) return
+                    addedSrcs.add(img.src)
+                    // Don't include tiny tracking pixels
+                    if (img.width === 1 && img.height === 1) return
+                    
+                    const a = img.closest('a')
+                    if (a) {
+                      mediaHtml += `<a href="${a.href}"><img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /></a><br/>`
+                    } else {
+                      mediaHtml += `<img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /><br/>`
+                    }
+                  })
+                }
+                htmlToRender = DOMPurify.sanitize(mediaHtml + redditSelftext!, { FORCE_BODY: true })
               }
 
               if (isLoadingArticle && !htmlToRender) {
