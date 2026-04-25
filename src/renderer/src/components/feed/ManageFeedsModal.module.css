@@ -1,0 +1,52 @@
+/* ManageFeedsModal.module.css — Undo Toast */
+
+.undoToast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast, 300);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  animation: slideUp 200ms var(--ease-out);
+  white-space: nowrap;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.undoBtn {
+  padding: 5px 12px;
+  background: var(--brand-500);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.undoBtn:hover {
+  background: var(--brand-600);
+}
+
+.toastClose {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.toastClose:hover {
+  color: var(--text-primary);
+}

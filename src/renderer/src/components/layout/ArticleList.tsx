@@ -5,7 +5,7 @@
  * enabling smooth scrolling over thousands of articles.
  */
 
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useArticleStore } from '../../store/articleStore'
 import { useFeedStore } from '../../store/feedStore'
@@ -16,6 +16,7 @@ export function ArticleList() {
   const { articles, selectedArticle, isLoadingList, hasMore, loadMore, openArticle, prefetchArticles } = useArticleStore()
   const { selection } = useFeedStore()
   const parentRef = useRef<HTMLDivElement>(null)
+  const [isCompact, setIsCompact] = useState(false)
 
   // ── Virtualizer ────────────────────────────────────────────────────────────
   const rowVirtualizer = useVirtualizer({
@@ -105,6 +106,31 @@ export function ArticleList() {
         {articles.length > 0 && (
           <span className={styles.count}>{articles.length}{hasMore ? '+' : ''}</span>
         )}
+        {/* Compact mode toggle — shows only titles for rapid scanning */}
+        <button
+          className={`${styles.compactToggle} ${isCompact ? styles.compactToggleActive : ''}`}
+          onClick={() => setIsCompact(v => !v)}
+          title={isCompact ? 'Vue détaillée' : 'Vue compacte'}
+          aria-label={isCompact ? 'Passer en vue détaillée' : 'Passer en vue compacte'}
+          aria-pressed={isCompact}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {isCompact ? (
+              <>
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </>
+            ) : (
+              <>
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+              </>
+            )}
+          </svg>
+        </button>
       </header>
 
       {/* Article list (virtualised) */}
@@ -151,10 +177,11 @@ export function ArticleList() {
                   ref={rowVirtualizer.measureElement}
                   data-index={virtualRow.index}
                 >
-                  <ArticleCard
+                <ArticleCard
                     article={article}
                     isSelected={selectedArticle?.id === article.id}
                     onClick={() => void openArticle(article.id)}
+                    isCompact={isCompact}
                   />
                 </div>
               )

@@ -287,12 +287,14 @@
 
 /* ── FOOTER INPUT STRIP ── */
 .footerStrip {
-  padding: var(--space-4) var(--space-8);
+  padding: var(--space-2) var(--space-8) var(--space-4);
   background: color-mix(in srgb, var(--bg-base), transparent 5%);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--border-subtle);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
   z-index: 10;
 }
 

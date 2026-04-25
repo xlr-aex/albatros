@@ -126,12 +126,27 @@ export function AiDigestView() {
   
   const abortControllerRef = useRef<AbortController | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatScrollRef = useRef<HTMLElement>(null)   // ref on the scrollable <main>
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const isAtBottomRef = useRef(true)                // tracks if user is near the bottom
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
 
-  // Auto-scroll chat
+  // Smart auto-scroll: only scroll to bottom if user hasn't scrolled up
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isAtBottomRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, state])
+
+  // Detect whether the user is near the bottom of the chat
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const atBottom = distanceFromBottom < 100
+    isAtBottomRef.current = atBottom
+    setShowScrollBtn(!atBottom)
+  }, [])
 
   // Focus input on mount
   useEffect(() => {
@@ -162,12 +177,16 @@ export function AiDigestView() {
   const handleSendMessage = async (forcedPrompt?: string) => {
     if (state === 'loading' || state === 'streaming') {
       abortControllerRef.current?.abort()
-      setState('done') // or idle
+      setState('done')
       return
     }
 
     const contentToSend = (forcedPrompt || chatInput).trim()
     if (!contentToSend) return
+
+    // When user sends a message, resume auto-scroll
+    isAtBottomRef.current = true
+    setShowScrollBtn(false)
 
     setChatInput('')
     setErrorMsg('')
@@ -389,19 +408,25 @@ ${contentToSend}`
       </header>
 
       {/* ── CHAT HISTORY AREA ── */}
-      <main className={styles.content}>
+      <main
+        className={styles.content}
+        ref={chatScrollRef as React.RefObject<HTMLDivElement>}
+        onScroll={handleChatScroll}
+      >
         <div className={styles.chatWrapper}>
           {messages.length === 0 && !errorMsg ? (
             <div className={styles.empty}>
               <div className={styles.emptyIcon}>🤖</div>
               <h2>Le savoir infusé.</h2>
               <p>Sélectionnez une période temporelle et une source en haut. Ensuite, envoyez votre premier message ou utilisez un raccourci :</p>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
                 <button className={styles.pillButton} onClick={() => handleSendMessage('Fais un résumé exhaustif des articles.')}>
                   📝 Résumé exhaustif
+                  <span style={{ fontSize: '0.7rem', opacity: 0.7, display: 'block', marginTop: '2px' }}>Synthèse thématique de toutes les sources</span>
                 </button>
                 <button className={styles.pillButton} onClick={() => handleSendMessage("Quelles sont les annonces importantes ?")}>
                   🚨 Annonces clés
+                  <span style={{ fontSize: '0.7rem', opacity: 0.7, display: 'block', marginTop: '2px' }}>Alertes critiques et nouveaux produits</span>
                 </button>
               </div>
             </div>
@@ -436,15 +461,84 @@ ${contentToSend}`
 
           {errorMsg && (
             <div className={styles.error} style={{ marginTop: '16px' }}>
-              ERREUR : {errorMsg}
+              <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>⚠ Erreur de connexion à l'IA</div>
+              <div style={{ marginBottom: '6px' }}>{errorMsg}</div>
+              <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>
+                {errorMsg.includes('fetch') || errorMsg.includes('Network')
+                  ? '💡 Vérifiez que LM Studio / Ollama est lancé et accessible.'
+                  : errorMsg.includes('timeout') || errorMsg.includes('Abort')
+                    ? '💡 Délai dépassé. Vérifiez que le modèle est chargé dans le backend.'
+                    : '💡 Vérifiez l\'URL de l\'API dans les Paramètres → ✦ IA.'}
+              </div>
             </div>
           )}
           <div ref={chatEndRef} />
         </div>
       </main>
 
+      {/* Scroll-to-bottom button — visible when user has scrolled up during generation */}
+      {showScrollBtn && (
+        <button
+          onClick={() => {
+            isAtBottomRef.current = true
+            setShowScrollBtn(false)
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+          }}
+          style={{
+            position: 'absolute',
+            bottom: '130px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '7px 16px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '9999px',
+            color: 'var(--text-secondary)',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-md)',
+            zIndex: 10,
+            transition: 'all 0.15s',
+            backdropFilter: 'blur(8px)',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--brand-500)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-light)' }}
+          aria-label="Reprendre le défilement automatique"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+          Reprendre le défilement
+        </button>
+      )}
+
       {/* ── FIXED INPUT STRIP ── */}
       <footer className={styles.footerStrip}>
+        {/* Active context indicator — Nielsen heuristic 1: visibility of system state */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 16px 0',
+          fontSize: '0.72rem',
+          color: 'var(--text-muted)',
+        }}>
+          <span style={{ color: 'var(--brand-400)', fontWeight: 600 }}>Contexte actif :</span>
+          <span>
+            {timeframe === 'today' ? 'Aujourd\'hui' : timeframe === 'week' ? 'Derniers jours' : 'Ce mois'}
+            {' · '}
+            {sourceId === 'all'
+              ? 'Toutes les sources'
+              : sourceId.startsWith('group_')
+                ? 'Dossier sélectionné'
+                : 'Flux sélectionné'}
+          </span>
+        </div>
         <div className={styles.inputWrapper}>
           <textarea
             ref={inputRef}
@@ -457,12 +551,12 @@ ${contentToSend}`
                 handleSendMessage()
               }
             }}
-            placeholder="Posez votre question à l'IA... (Ex: Quels outils sont sortis hier ?)"
+            placeholder="Posez votre question… (Shift+Enter pour nouvelle ligne)"
             className={styles.textarea}
             rows={2}
           />
-          <button 
-            onClick={() => handleSendMessage()} 
+          <button
+            onClick={() => handleSendMessage()}
             className={`${styles.button} ${styles.sendBtn} ${state === 'loading' || state === 'streaming' ? styles.cancelBtn : ''}`}
           >
             {state === 'loading' || state === 'streaming' ? (

@@ -16,9 +16,10 @@ interface Props {
   article: ArticleSummary
   isSelected: boolean
   onClick: () => void
+  isCompact?: boolean
 }
 
-export const ArticleCard = memo(function ArticleCard({ article, isSelected, onClick }: Props) {
+export const ArticleCard = memo(function ArticleCard({ article, isSelected, onClick, isCompact }: Props) {
   const { title, excerpt, feed_title, published_at, is_read, thumbnail_url } = article
   const currentSearchQuery = useArticleStore(state => state.currentSearchQuery)
   const selection = useFeedStore(state => state.selection)
@@ -42,7 +43,7 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
 
   return (
     <button
-      className={`${styles.card} ${isSelected ? styles.selected : ''} ${is_read ? styles.read : ''}`}
+      className={`${styles.card} ${isSelected ? styles.selected : ''} ${is_read ? styles.read : ''} ${isCompact ? styles.compact : ''}`}
       onClick={onClick}
       aria-label={ariaLabel}
       aria-current={isSelected ? 'true' : undefined}

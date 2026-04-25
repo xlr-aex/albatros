@@ -6,7 +6,7 @@
   width: var(--article-list-width);
   height: 100%;
   background: var(--bg-panel);
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-column, var(--border-subtle));
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -36,6 +36,27 @@
   border-radius: var(--radius-full);
   padding: 2px 8px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Compact mode toggle button */
+.compactToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.compactToggle:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.compactToggleActive {
+  background: color-mix(in srgb, var(--brand-500), transparent 85%);
+  color: var(--brand-400);
 }
 
 .scrollArea {

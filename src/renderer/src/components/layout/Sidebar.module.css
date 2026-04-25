@@ -15,8 +15,9 @@
 .header {
   display: flex;
   align-items: center;
-  height: var(--toolbar-height);
-  padding: 0 var(--space-4);
+  height: auto;
+  min-height: var(--toolbar-height);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 .logo {
@@ -34,11 +35,18 @@
 .actions {
   display: flex;
   gap: 2px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .actionBtn {
-  width: 30px;
-  height: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 44px;
+  height: 44px;
+  padding: 6px 4px 5px;
   border-radius: var(--radius-md);
   color: var(--text-muted);
   transition: all var(--transition-fast);
@@ -46,6 +54,17 @@
 .actionBtn:hover {
   background: var(--bg-elevated);
   color: var(--text-primary);
+}
+
+/* Text label below icon — makes each action self-explanatory */
+.actionLabel {
+  font-size: 9px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  opacity: 0.75;
+  user-select: none;
 }
 
 /* Scrollable nav area */
@@ -109,21 +128,22 @@
   white-space: nowrap;
 }
 
-/* Unread badge */
+/* Unread badge — muted presence indicator, not an alarm */
 .badge {
   flex-shrink: 0;
-  background: var(--brand-500);
-  color: #fff;
+  background: var(--color-unread-badge-bg, rgba(96, 165, 250, 0.15));
+  color: var(--color-unread-badge-text, #7eb3f8);
   font-size: 10px;
-  font-weight: var(--weight-bold);
-  min-width: 20px;
-  height: 18px;
+  font-weight: var(--weight-semi);
+  min-width: 18px;
+  height: 16px;
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
+  padding: 0 5px;
   letter-spacing: 0.02em;
+  border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
 /* ── Feed Group ──────────────────────────────────────────────────────────────── */

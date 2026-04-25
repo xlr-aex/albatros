@@ -20,18 +20,24 @@
   --bg-overlay:   rgba(10, 12, 20, 0.85); /* Modal overlay */
 
   /* ── Text ───────────────────────────────────────────────────────────────── */
-  --text-primary:   #e8eaf2;
-  --text-secondary: #8892b0;
+  /* Slightly tinted white (not pure) reduces eye strain in prolonged dark-mode reading */
+  --text-primary:   #cdd2e8;  /* ~8.4:1 contrast on bg-base — WCAG AA+ */
+  --text-secondary: #7d8aa8;
   --text-muted:     #4d566e;
   --text-inverse:   #0f1117;
 
   /* ── Borders ────────────────────────────────────────────────────────────── */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-light:  rgba(255, 255, 255, 0.12);
+  /* Slightly more visible separators to anchor the three-column layout */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-light:  rgba(255, 255, 255, 0.15);
   --border-focus:  var(--brand-500);
+  --border-column: rgba(255, 255, 255, 0.10); /* Column dividers */
 
   /* ── Semantic colours ───────────────────────────────────────────────────── */
   --color-unread:   var(--brand-400);
+  /* Desaturated badge: muted dot on dark bg — same meaning, less visual aggression */
+  --color-unread-badge-bg:   rgba(96, 165, 250, 0.18);
+  --color-unread-badge-text: #7eb3f8;
   --color-saved:    #34d399;   /* Emerald */
   --color-error:    #f87171;   /* Red */
   --color-success:  #4ade80;   /* Green */

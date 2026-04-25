@@ -1,6 +1,7 @@
 /**
  * @file components/settings/SettingsPanel.tsx
- * @description Full-featured settings modal with persistence via window.api.settings.
+ * @description Settings — full-page layout with vertical tabs.
+ * Axes 3 (tabs), 3 (no free color picker), 3 (auto-resize prompts), 3 (reset confirmation).
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -19,7 +20,6 @@ interface Settings {
   default_interval_sec: string
   retention_days: string
   max_articles_per_feed: string
-  // ── AI ──
   ai_provider: string
   ai_base_url: string
   ai_model: string
@@ -37,7 +37,6 @@ const DEFAULTS: Settings = {
   default_interval_sec: '900',
   retention_days: '30',
   max_articles_per_feed: '500',
-  // ── AI ──
   ai_provider: 'lmstudio',
   ai_base_url: 'http://127.0.0.1:1234',
   ai_model: '',
@@ -46,11 +45,36 @@ const DEFAULTS: Settings = {
   ai_chatbot_news_prompt: "Tu es un assistant analytique expert. Ta tâche est d'extraire uniquement les annonces majeures, les alertes critiques et les nouveaux produits des articles fournis.\n\nCONSIGNES :\n1. Sois très sélectif.\n2. Utilise une liste à puces.\n3. Chaque fait mentionné DOIT être sourcé avec l'ID correspondant entre crochets (ex: [12]).\n4. N'invente jamais d'ID.",
 }
 
+type TabId = 'appearance' | 'reading' | 'ai'
+
+const TABS: { id: TabId; icon: string; label: string }[] = [
+  { id: 'appearance', icon: '🎨', label: 'Apparence' },
+  { id: 'reading',    icon: '📖', label: 'Lecture & Sync' },
+  { id: 'ai',        icon: '✦',  label: 'IA & Modèles' },
+]
+
+/** Parse an error to produce a diagnostic message + hint */
+function parseConnectionError(msg: string): { title: string; hint: string } {
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+    return { title: 'Connexion refusée', hint: 'Vérifiez que LM Studio / Ollama est bien lancé et accessible sur l\'URL configurée.' }
+  }
+  if (msg.includes('timeout') || msg.includes('AbortError')) {
+    return { title: 'Délai d\'attente dépassé', hint: 'Le serveur ne répond pas. Vérifiez le port et que le modèle est chargé.' }
+  }
+  if (msg.includes('HTTP 4') || msg.includes('HTTP 5')) {
+    return { title: `Erreur serveur (${msg})`, hint: 'Le serveur a répondu avec une erreur. Vérifiez l\'URL de l\'API et la version du provider.' }
+  }
+  return { title: msg, hint: 'Vérifiez la configuration et réessayez.' }
+}
+
 export function SettingsPanel({ onClose }: Props) {
   const [settings, setSettings] = useState<Settings>(DEFAULTS)
   const [loaded, setLoaded] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabId>('appearance')
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [aiTestMsg, setAiTestMsg] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [resetConfirm, setResetConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -65,23 +89,17 @@ export function SettingsPanel({ onClose }: Props) {
     setSettings(s => {
       const next = { ...s, [key]: value }
       if (key === 'ai_provider') {
-        const defaultUrl = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-        next.ai_base_url = defaultUrl
+        next.ai_base_url = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
       }
       return next
     })
-
     if (key === 'ai_provider') {
       const defaultUrl = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
       window.api.settings.set('ai_base_url', defaultUrl).catch(console.error)
-      setAiTestStatus('idle')
-      setAiTestMsg('')
+      setAiTestStatus('idle'); setAiTestMsg('')
+    } else if (key === 'ai_base_url') {
+      setAiTestStatus('idle'); setAiTestMsg('')
     }
-    else if (key === 'ai_base_url') {
-      setAiTestStatus('idle')
-      setAiTestMsg('')
-    }
-    
     if (key === 'theme') {
       useUiStore.getState().setTheme(value as 'light' | 'dark')
     } else if (key === 'font_size') {
@@ -91,49 +109,46 @@ export function SettingsPanel({ onClose }: Props) {
     } else if (key === 'accent_color') {
       applyAccentColor(value)
     }
-    
     window.api.settings.set(key, value).catch(console.error)
   }, [])
 
   const testConnection = useCallback(async () => {
-    setAiTestStatus('testing')
-    setAiTestMsg('')
+    setAiTestStatus('testing'); setAiTestMsg('')
     let baseUrl = settings.ai_base_url.replace(/\/$/, '')
-    if (settings.ai_provider === 'lmstudio' && baseUrl.endsWith('/v1')) {
-      baseUrl = baseUrl.slice(0, -3)
-    }
+    if (settings.ai_provider === 'lmstudio' && baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3)
     const provider = settings.ai_provider
     try {
-      const endpoint = provider === 'ollama'
-        ? `${baseUrl}/api/tags`
-        : `${baseUrl}/v1/models`
-        
-      // Délai artificiel pour le rendu visuel
+      const endpoint = provider === 'ollama' ? `${baseUrl}/api/tags` : `${baseUrl}/v1/models`
       await new Promise(r => setTimeout(r, 400))
-        
       const res = await fetch(endpoint, { signal: AbortSignal.timeout(5000) })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      // Extract model list for a friendly message
       const models: string[] = provider === 'ollama'
-        ? (data.models ?? []).map((m: {name: string}) => m.name)
-        : (data.data ?? []).map((m: {id: string}) => m.id)
-      const modelList = models.slice(0, 5)
-      const modelHint = modelList.length > 0 ? `Modèles : ${modelList.join(', ')}` : 'Connecté !'
+        ? (data.models ?? []).map((m: { name: string }) => m.name)
+        : (data.data ?? []).map((m: { id: string }) => m.id)
+      const modelHint = models.length > 0 ? `Modèles disponibles : ${models.slice(0, 5).join(', ')}` : 'Connecté !'
       setAiTestMsg(modelHint)
       setAiTestStatus('ok')
-      
-      // Auto-fetch: Si le modèle est vide, on prend le premier disponible
-      if (!settings.ai_model && models.length > 0) {
-        update('ai_model', models[0])
-      }
+      if (!settings.ai_model && models.length > 0) update('ai_model', models[0])
     } catch (err: unknown) {
       setAiTestMsg((err as Error).message ?? String(err))
       setAiTestStatus('error')
     }
   }, [settings.ai_base_url, settings.ai_provider, settings.ai_model, update])
 
+  const handleReset = (key: keyof Settings) => {
+    if (resetConfirm === key) {
+      update(key, DEFAULTS[key])
+      setResetConfirm(null)
+    } else {
+      setResetConfirm(key)
+      setTimeout(() => setResetConfirm(null), 3000)
+    }
+  }
+
   if (!loaded) return null
+
+  const diagError = aiTestStatus === 'error' ? parseConnectionError(aiTestMsg) : null
 
   return (
     <div
@@ -141,440 +156,346 @@ export function SettingsPanel({ onClose }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
     >
-      <div className={styles.panel} role="dialog" aria-modal="true" aria-label="Settings">
-        {/* Header */}
+      <div className={styles.panel} role="dialog" aria-modal="true" aria-label="Paramètres">
+        {/* ── Header ─────────────────────────────────────────────── */}
         <div className={styles.header}>
-          <h2 className={styles.headerTitle}>⚙ Settings</h2>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">✕</button>
+          <h2 className={styles.headerTitle}>⚙ Paramètres</h2>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">✕</button>
         </div>
 
+        {/* ── Body: sidebar tabs + content ───────────────────────── */}
         <div className={styles.body}>
-          {/* ── Apparence ────────────────────────────── */}
-          <div className={styles.section}>
-            <div className={styles.sectionTitle}>Apparence</div>
+          {/* Vertical tab sidebar */}
+          <nav className={styles.tabSidebar} aria-label="Catégories de paramètres">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                className={`${styles.tabBtn} ${activeTab === tab.id ? styles.tabBtnActive : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`tab-panel-${tab.id}`}
+              >
+                <span className={styles.tabIcon}>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
 
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Thème</div>
-                <div className={styles.rowDesc}>Choisissez entre le mode clair et sombre</div>
-              </div>
-              <div className={styles.segmentedControl}>
-                <button
-                  className={`${styles.segmentBtn} ${settings.theme === 'light' ? styles.segmentBtnActive : ''}`}
-                  onClick={() => update('theme', 'light')}
-                  aria-pressed={settings.theme === 'light'}
-                >
-                  <span className={styles.segmentIcon}>☀️</span> Clair
-                </button>
-                <button
-                  className={`${styles.segmentBtn} ${settings.theme === 'dark' ? styles.segmentBtnActive : ''}`}
-                  onClick={() => update('theme', 'dark')}
-                  aria-pressed={settings.theme === 'dark'}
-                >
-                  <span className={styles.segmentIcon}>🌙</span> Sombre
-                </button>
-              </div>
-            </div>
+          {/* Tab content */}
+          <div className={styles.tabContent} id={`tab-panel-${activeTab}`} role="tabpanel">
 
-            <div className={styles.row} style={{ alignItems: 'flex-start' }}>
-              <div className={styles.rowLabel} style={{ marginTop: '4px' }}>
-                <div className={styles.rowName}>Couleur d'accentuation</div>
-                <div className={styles.rowDesc}>Personnalisez la couleur principale de l'interface</div>
-              </div>
-              <div className={styles.colorPalette}>
-                {Object.entries(ACCENT_COLORS).map(([colorName, hexes]) => (
+            {/* ══════════════ APPARENCE ══════════════ */}
+            {activeTab === 'appearance' && (
+              <>
+                <div className={styles.section}>
+                  <div className={styles.sectionTitle}>Thème</div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Mode d'affichage</div>
+                      <div className={styles.rowDesc}>Choisissez entre le mode clair et sombre</div>
+                    </div>
+                    <div className={styles.segmentedControl}>
+                      <button
+                        className={`${styles.segmentBtn} ${settings.theme === 'light' ? styles.segmentBtnActive : ''}`}
+                        onClick={() => update('theme', 'light')}
+                        aria-pressed={settings.theme === 'light'}
+                      >
+                        <span className={styles.segmentIcon}>☀️</span> Clair
+                      </button>
+                      <button
+                        className={`${styles.segmentBtn} ${settings.theme === 'dark' ? styles.segmentBtnActive : ''}`}
+                        onClick={() => update('theme', 'dark')}
+                        aria-pressed={settings.theme === 'dark'}
+                      >
+                        <span className={styles.segmentIcon}>🌙</span> Sombre
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Color palette — only pre-validated accessible swatches */}
+                  <div className={styles.row} style={{ alignItems: 'flex-start' }}>
+                    <div className={styles.rowLabel} style={{ marginTop: '4px' }}>
+                      <div className={styles.rowName}>Couleur d'accentuation</div>
+                      <div className={styles.rowDesc}>Palette validée WCAG — contraste ≥ 4.5:1 garanti</div>
+                    </div>
+                    <div className={styles.colorPalette}>
+                      {Object.entries(ACCENT_COLORS).map(([colorName, hexes]) => (
+                        <button
+                          key={colorName}
+                          title={colorName}
+                          aria-label={`Couleur: ${colorName}`}
+                          aria-pressed={settings.accent_color === colorName}
+                          className={`${styles.colorSwatch} ${settings.accent_color === colorName ? styles.colorSwatchActive : ''}`}
+                          style={{ '--swatch-color': hexes[500] } as React.CSSProperties}
+                          onClick={() => update('accent_color', colorName)}
+                        >
+                          {settings.accent_color === colorName && <span className={styles.checkIcon}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.section}>
+                  <div className={styles.sectionTitle}>Typographie</div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>
+                        Taille de l'interface <span className={styles.fontValue}>{settings.ui_font_size}px</span>
+                      </div>
+                      <div className={styles.rowDesc}>Éléments de navigation et de contrôle</div>
+                    </div>
+                    <input
+                      type="range" className={styles.slider}
+                      min="12" max="24" step="1"
+                      value={settings.ui_font_size}
+                      aria-label={`Taille interface: ${settings.ui_font_size}px`}
+                      onChange={e => update('ui_font_size', e.target.value)}
+                    />
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>
+                        Taille du texte <span className={styles.fontValue}>{settings.font_size}px</span>
+                      </div>
+                      <div className={styles.rowDesc}>Contenu des articles en lecture</div>
+                    </div>
+                    <input
+                      type="range" className={styles.slider}
+                      min="12" max="36" step="1"
+                      value={settings.font_size}
+                      aria-label={`Taille texte: ${settings.font_size}px`}
+                      onChange={e => update('font_size', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Live preview */}
+                  <div style={{ marginTop: '8px', padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: '8px', background: 'var(--bg-base)' }}>
+                    <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>Aperçu du texte</div>
+                    <div style={{ fontSize: 'var(--article-font-size, 16px)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                      Portez ce vieux whisky au juge blond qui fume.
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ══════════════ LECTURE & SYNC ══════════════ */}
+            {activeTab === 'reading' && (
+              <>
+                <div className={styles.section}>
+                  <div className={styles.sectionTitle}>Lecture</div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Marquer comme lu à l'ouverture</div>
+                      <div className={styles.rowDesc}>Marquer automatiquement les articles comme lus lors de leur ouverture</div>
+                    </div>
+                    <div
+                      className={`${styles.toggle} ${settings.mark_read_on_open === '1' ? styles.toggleOn : ''}`}
+                      onClick={() => update('mark_read_on_open', settings.mark_read_on_open === '1' ? '0' : '1')}
+                      onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); update('mark_read_on_open', settings.mark_read_on_open === '1' ? '0' : '1') } }}
+                      role="switch" tabIndex={0}
+                      aria-checked={settings.mark_read_on_open === '1'}
+                      aria-label="Marquer comme lu à l'ouverture"
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.section}>
+                  <div className={styles.sectionTitle}>Synchronisation & Stockage</div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Intervalle de rafraîchissement</div>
+                      <div className={styles.rowDesc}>Fréquence de vérification des nouveaux articles</div>
+                    </div>
+                    <select className={styles.select} value={settings.default_interval_sec} onChange={e => update('default_interval_sec', e.target.value)}>
+                      <option value="300">5 minutes</option>
+                      <option value="600">10 minutes</option>
+                      <option value="900">15 minutes</option>
+                      <option value="1800">30 minutes</option>
+                      <option value="3600">1 heure</option>
+                      <option value="7200">2 heures</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Conservation des articles</div>
+                      <div className={styles.rowDesc}>Supprimer les articles plus anciens que ce nombre de jours</div>
+                    </div>
+                    <input type="number" className={styles.input} value={settings.retention_days} min={1} max={365} onChange={e => update('retention_days', e.target.value)} />
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Articles max par flux</div>
+                      <div className={styles.rowDesc}>Nombre maximum d'articles stockés par flux</div>
+                    </div>
+                    <input type="number" className={styles.input} value={settings.max_articles_per_feed} min={50} max={5000} step={50} onChange={e => update('max_articles_per_feed', e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ══════════════ IA ══════════════ */}
+            {activeTab === 'ai' && (
+              <>
+                <div className={styles.section}>
+                  <div className={styles.sectionTitle}>
+                    <span className={styles.aiGradientTitle}>✦ Configuration du Backend IA</span>
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Fournisseur LLM</div>
+                      <div className={styles.rowDesc}>Backend IA local à utiliser</div>
+                    </div>
+                    <select className={styles.select} value={settings.ai_provider} onChange={e => update('ai_provider', e.target.value)} id="settings-ai-provider">
+                      <option value="lmstudio">🖥 LM Studio</option>
+                      <option value="ollama">🦙 Ollama</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>URL de l'API</div>
+                      <div className={styles.rowDesc}>{settings.ai_provider === 'ollama' ? 'Ex : http://127.0.0.1:11434' : 'Ex : http://127.0.0.1:1234'}</div>
+                    </div>
+                    <input
+                      type="text" className={styles.input}
+                      value={settings.ai_base_url}
+                      placeholder={settings.ai_provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'}
+                      onChange={e => update('ai_base_url', e.target.value)}
+                      id="settings-ai-base-url"
+                      style={{ width: 220, minWidth: 180, textAlign: 'left' }}
+                    />
+                  </div>
+
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Nom du modèle</div>
+                      <div className={styles.rowDesc}>{settings.ai_provider === 'ollama' ? 'Ex : llama3, mistral, phi3' : 'Laissez vide pour le modèle actif'}</div>
+                    </div>
+                    <input
+                      type="text" className={styles.input}
+                      value={settings.ai_model}
+                      placeholder={settings.ai_provider === 'ollama' ? 'llama3' : 'local-model'}
+                      onChange={e => update('ai_model', e.target.value)}
+                      id="settings-ai-model"
+                      style={{ width: 200, minWidth: 160, textAlign: 'left' }}
+                    />
+                  </div>
+
+                  {/* Test connection with diagnostic error */}
+                  <div className={styles.row}>
+                    <div className={styles.rowLabel}>
+                      <div className={styles.rowName}>Test de connexion</div>
+                      <div className={styles.rowDesc}>Vérifie que le backend répond et liste les modèles disponibles</div>
+                    </div>
+                    <button
+                      className={`${styles.testBtn} ${aiTestStatus === 'ok' ? styles.testBtnOk : aiTestStatus === 'error' ? styles.testBtnError : ''}`}
+                      onClick={testConnection}
+                      disabled={aiTestStatus === 'testing'}
+                      id="settings-ai-test-btn"
+                      style={{ cursor: aiTestStatus === 'testing' ? 'wait' : 'pointer' }}
+                    >
+                      {aiTestStatus === 'testing' ? '⏳ Test…' : aiTestStatus === 'ok' ? '✓ Connecté' : aiTestStatus === 'error' ? '✕ Erreur' : '⚡ Tester'}
+                    </button>
+                  </div>
+
+                  {/* Diagnostic error message */}
+                  {aiTestStatus === 'ok' && aiTestMsg && (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-success)', lineHeight: 1.5, padding: '8px 12px', background: 'rgba(74, 222, 128, 0.07)', borderRadius: '6px', border: '1px solid rgba(74,222,128,0.15)' }}>
+                      {aiTestMsg}
+                    </div>
+                  )}
+                  {diagError && (
+                    <div className={styles.errorDiag}>
+                      <div className={styles.errorDiagTitle}>⚠ {diagError.title}</div>
+                      <div className={styles.errorDiagHint}>💡 {diagError.hint}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Advanced section (collapsible) */}
+                <div className={styles.section}>
                   <button
-                    key={colorName}
-                    title={colorName}
-                    aria-label={`Couleur: ${colorName}`}
-                    aria-pressed={settings.accent_color === colorName}
-                    className={`${styles.colorSwatch} ${settings.accent_color === colorName ? styles.colorSwatchActive : ''}`}
-                    style={{ '--swatch-color': hexes[500] } as React.CSSProperties}
-                    onClick={() => update('accent_color', colorName)}
+                    className={`${styles.advancedToggle} ${showAdvanced ? styles.advancedToggleOpen : ''}`}
+                    onClick={() => setShowAdvanced(v => !v)}
+                    aria-expanded={showAdvanced}
                   >
-                    {settings.accent_color === colorName && <span className={styles.checkIcon}>✓</span>}
+                    <span>🔧</span>
+                    <span>Paramètres Avancés — Prompts Système</span>
+                    <span className={styles.advancedToggleCaret}>▶</span>
                   </button>
-                ))}
-                
-                <div className={styles.colorDivider} />
-                
-                <label
-                  title="Couleur personnalisée"
-                  className={`${styles.colorSwatch} ${styles.colorSwatchCustom} ${settings.accent_color?.startsWith('#') ? styles.colorSwatchActive : ''}`}
-                  style={{ '--swatch-color': settings.accent_color?.startsWith('#') ? settings.accent_color : 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' } as React.CSSProperties}
-                >
-                  {settings.accent_color?.startsWith('#') && <span className={styles.checkIcon}>✓</span>}
-                  <input
-                    type="color"
-                    aria-label="Sélecteur de couleur personnalisée"
-                    value={settings.accent_color?.startsWith('#') ? settings.accent_color : '#3b82f6'}
-                    onChange={e => update('accent_color', e.target.value)}
-                    className={styles.colorInputHidden}
-                  />
-                </label>
-              </div>
-            </div>
 
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>
-                  Taille de l'interface <span className={styles.fontValue}>{settings.ui_font_size}px</span>
+                  {showAdvanced && (
+                    <>
+                      {/* Article summary prompt */}
+                      <div>
+                        <div className={styles.rowName} style={{ marginBottom: 4 }}>System Prompt — Résumé d'Article</div>
+                        <div className={styles.rowDesc} style={{ marginBottom: 8 }}>
+                          Instructions envoyées lors d'un clic sur le bouton "Résumé IA" dans un article.
+                        </div>
+                        <textarea
+                          id="settings-ai-system-prompt"
+                          value={settings.ai_system_prompt}
+                          onChange={e => update('ai_system_prompt', e.target.value)}
+                          className={styles.promptTextarea}
+                          rows={6}
+                          placeholder="Décris à l'IA comment résumer l'article…"
+                        />
+                        <button
+                          className={styles.resetBtn}
+                          onClick={() => handleReset('ai_system_prompt')}
+                          id="settings-ai-reset-prompt-btn"
+                        >
+                          <span>↺</span>
+                          {resetConfirm === 'ai_system_prompt' ? '⚠ Confirmer la réinitialisation ?' : 'Réinitialiser le prompt'}
+                        </button>
+                      </div>
+
+                      <div style={{ marginTop: 16 }}>
+                        <div className={styles.rowName} style={{ marginBottom: 4 }}>Prompt Chatbot — Résumé exhaustif</div>
+                        <textarea
+                          value={settings.ai_chatbot_summary_prompt}
+                          onChange={e => update('ai_chatbot_summary_prompt', e.target.value)}
+                          className={styles.promptTextarea}
+                          rows={5}
+                        />
+                        <button className={styles.resetBtn} onClick={() => handleReset('ai_chatbot_summary_prompt')}>
+                          <span>↺</span>
+                          {resetConfirm === 'ai_chatbot_summary_prompt' ? '⚠ Confirmer ?' : 'Réinitialiser'}
+                        </button>
+                      </div>
+
+                      <div style={{ marginTop: 16 }}>
+                        <div className={styles.rowName} style={{ marginBottom: 4 }}>Prompt Chatbot — Annonces clés</div>
+                        <textarea
+                          value={settings.ai_chatbot_news_prompt}
+                          onChange={e => update('ai_chatbot_news_prompt', e.target.value)}
+                          className={styles.promptTextarea}
+                          rows={5}
+                        />
+                        <button className={styles.resetBtn} onClick={() => handleReset('ai_chatbot_news_prompt')}>
+                          <span>↺</span>
+                          {resetConfirm === 'ai_chatbot_news_prompt' ? '⚠ Confirmer ?' : 'Réinitialiser'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className={styles.rowDesc}>Taille de base pour les éléments de l'interface</div>
-              </div>
-              <input
-                type="range"
-                className={styles.slider}
-                min="12"
-                max="24"
-                step="1"
-                value={settings.ui_font_size}
-                aria-label={`UI Scale: ${settings.ui_font_size}px`}
-                onChange={e => update('ui_font_size', e.target.value)}
-              />
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>
-                  Taille du texte <span className={styles.fontValue}>{settings.font_size}px</span>
-                </div>
-                <div className={styles.rowDesc}>Taille de base pour le contenu des articles</div>
-              </div>
-              <input
-                type="range"
-                className={styles.slider}
-                min="12"
-                max="36"
-                step="1"
-                value={settings.font_size}
-                aria-label={`Article font size: ${settings.font_size}px`}
-                onChange={e => update('font_size', e.target.value)}
-              />
-            </div>
-
-            <div style={{
-              marginTop: '16px',
-              padding: '16px',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '8px',
-              background: 'var(--bg-base)',
-            }}>
-              <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                Aperçu du texte
-              </div>
-              <div style={{ fontSize: 'var(--article-font-size, 16px)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                Portez ce vieux whisky au juge blond qui fume.
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.divider} />
-
-          {/* ── Lecture ───────────────────────────────── */}
-          <div className={styles.section}>
-            <div className={styles.sectionTitle}>Lecture</div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Marquer comme lu à l'ouverture</div>
-                <div className={styles.rowDesc}>Marquer automatiquement les articles comme lus lors de leur ouverture</div>
-              </div>
-              <div
-                className={`${styles.toggle} ${settings.mark_read_on_open === '1' ? styles.toggleOn : ''}`}
-                onClick={() => update('mark_read_on_open', settings.mark_read_on_open === '1' ? '0' : '1')}
-                onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); update('mark_read_on_open', settings.mark_read_on_open === '1' ? '0' : '1') } }}
-                role="switch"
-                tabIndex={0}
-                aria-checked={settings.mark_read_on_open === '1'}
-                aria-label="Mark as read on open"
-              />
-            </div>
-          </div>
-
-          <div className={styles.divider} />
-
-          {/* ── Synchronisation ─────────────────────────────────── */}
-          <div className={styles.section}>
-            <div className={styles.sectionTitle}>Synchronisation & Stockage</div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Intervalle de rafraîchissement</div>
-                <div className={styles.rowDesc}>Fréquence de vérification des nouveaux articles</div>
-              </div>
-              <select
-                className={styles.select}
-                value={settings.default_interval_sec}
-                onChange={e => update('default_interval_sec', e.target.value)}
-              >
-                <option value="300">5 minutes</option>
-                <option value="600">10 minutes</option>
-                <option value="900">15 minutes</option>
-                <option value="1800">30 minutes</option>
-                <option value="3600">1 heure</option>
-                <option value="7200">2 heures</option>
-              </select>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Conservation des articles</div>
-                <div className={styles.rowDesc}>Supprimer les articles plus anciens que ce nombre de jours</div>
-              </div>
-              <input
-                type="number"
-                className={styles.input}
-                value={settings.retention_days}
-                min={1}
-                max={365}
-                onChange={e => update('retention_days', e.target.value)}
-              />
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Articles max par flux</div>
-                <div className={styles.rowDesc}>Nombre maximum d'articles stockés par flux</div>
-              </div>
-              <input
-                type="number"
-                className={styles.input}
-                value={settings.max_articles_per_feed}
-                min={50}
-                max={5000}
-                step={50}
-                onChange={e => update('max_articles_per_feed', e.target.value)}
-              />
-            </div>
-          </div>
-          <div className={styles.divider} />
-
-          {/* ── Intelligence Artificielle ──────────────────────────── */}
-          <div className={styles.section}>
-            <div className={styles.sectionTitle}
-              style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-            >
-              <span style={{
-                background: 'linear-gradient(135deg, #6366f1, #818cf8)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-              >✦ Intelligence Artificielle</span>
-            </div>
-
-            {/* Provider */}
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Fournisseur LLM</div>
-                <div className={styles.rowDesc}>Backend IA local à utiliser pour les résumés</div>
-              </div>
-              <select
-                className={styles.select}
-                value={settings.ai_provider}
-                onChange={e => update('ai_provider', e.target.value)}
-                id="settings-ai-provider"
-              >
-                <option value="lmstudio">🖥 LM Studio</option>
-                <option value="ollama">🦙 Ollama</option>
-              </select>
-            </div>
-
-            {/* Base URL */}
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>URL de l'API</div>
-                <div className={styles.rowDesc}>
-                  {settings.ai_provider === 'ollama'
-                    ? 'Ex : http://127.0.0.1:11434'
-                    : 'Ex : http://127.0.0.1:1234'}
-                </div>
-              </div>
-              <input
-                type="text"
-                className={styles.input}
-                value={settings.ai_base_url}
-                placeholder={settings.ai_provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'}
-                onChange={e => update('ai_base_url', e.target.value)}
-                id="settings-ai-base-url"
-                style={{ width: 220, minWidth: 180 }}
-              />
-            </div>
-
-            {/* Model name */}
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Nom du modèle</div>
-                <div className={styles.rowDesc}>
-                  {settings.ai_provider === 'ollama' ? 'Ex : llama3, mistral, phi3' : 'Ex : local-model (laissez vide pour le modèle actif)'}
-                </div>
-              </div>
-              <input
-                type="text"
-                className={styles.input}
-                value={settings.ai_model}
-                placeholder={settings.ai_provider === 'ollama' ? 'llama3' : 'local-model'}
-                onChange={e => update('ai_model', e.target.value)}
-                id="settings-ai-model"
-                style={{ width: 200, minWidth: 160 }}
-              />
-            </div>
-
-            {/* Test connection */}
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.rowName}>Test de connexion</div>
-                <div className={styles.rowDesc}>Vérifie que le backend répond</div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                <button
-                  className={styles.select}
-                  onClick={testConnection}
-                  disabled={aiTestStatus === 'testing'}
-                  id="settings-ai-test-btn"
-                  style={{
-                    cursor: aiTestStatus === 'testing' ? 'wait' : 'pointer',
-                    background: aiTestStatus === 'ok'
-                      ? 'color-mix(in srgb, #22c55e 15%, var(--bg-elevated))'
-                      : aiTestStatus === 'error'
-                        ? 'color-mix(in srgb, #ef4444 15%, var(--bg-elevated))'
-                        : undefined,
-                    borderColor: aiTestStatus === 'ok' ? '#22c55e'
-                      : aiTestStatus === 'error' ? '#ef4444' : undefined,
-                    color: aiTestStatus === 'ok' ? '#4ade80'
-                      : aiTestStatus === 'error' ? '#f87171' : undefined,
-                    transition: 'all 0.2s',
-                    minWidth: 110,
-                  }}
-                >
-                  {aiTestStatus === 'testing' ? '⏳ Test…'
-                    : aiTestStatus === 'ok' ? '✓ Connecté'
-                    : aiTestStatus === 'error' ? '✕ Erreur'
-                    : '⚡ Tester'}
-                </button>
-                {aiTestMsg && (
-                  <span style={{
-                    fontSize: '0.72rem',
-                    color: aiTestStatus === 'ok' ? 'var(--text-muted)' : '#f87171',
-                    maxWidth: 280,
-                    textAlign: 'right',
-                    lineHeight: 1.4,
-                  }}>
-                    {aiTestMsg}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* System Prompt */}
-            <div style={{ marginTop: 8 }}>
-              <div className={styles.rowName} style={{ marginBottom: 6 }}>System Prompt (Résumé d'Article)</div>
-              <div className={styles.rowDesc} style={{ marginBottom: 8 }}>
-                Instructions envoyées au modèle lors d'un clic sur le bouton "Résumé IA" (Indépendant du Chatbot global).
-              </div>
-              <textarea
-                id="settings-ai-system-prompt"
-                value={settings.ai_system_prompt}
-                onChange={e => update('ai_system_prompt', e.target.value)}
-                rows={5}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  background: 'var(--bg-base)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md, 6px)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.6,
-                  padding: '10px 12px',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  transition: 'border-color 0.15s',
-                }}
-                onFocus={e => { e.currentTarget.style.borderColor = 'var(--brand-500, #6366f1)' }}
-                onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)' }}
-                placeholder="Décris à l'IA comment elle doit résumer l'article…"
-              />
-              <button
-                onClick={() => update('ai_system_prompt', DEFAULTS.ai_system_prompt)}
-                style={{
-                  marginTop: 6,
-                  fontSize: '0.75rem',
-                  color: 'var(--text-muted)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '2px 0',
-                  textDecoration: 'underline',
-                }}
-                id="settings-ai-reset-prompt-btn"
-              >
-                Remettre le prompt par défaut
-              </button>
-            </div>
-            
-            <div style={{ marginTop: 16 }}>
-              <div className={styles.rowName} style={{ marginBottom: 6 }}>Prompt : Résumé exhaustif (Chatbot)</div>
-              <textarea
-                value={settings.ai_chatbot_summary_prompt}
-                onChange={e => update('ai_chatbot_summary_prompt', e.target.value)}
-                rows={4}
-                style={{
-                  width: '100%', boxSizing: 'border-box', background: 'var(--bg-base)',
-                  border: '1px solid var(--border-subtle)', borderRadius: 6,
-                  color: 'var(--text-primary)', fontSize: '0.85rem', padding: '10px 12px',
-                  resize: 'vertical', outline: 'none', lineHeight: 1.5,
-                  transition: 'border-color 0.15s',
-                }}
-                onFocus={e => { e.currentTarget.style.borderColor = 'var(--brand-500, #6366f1)' }}
-                onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)' }}
-              />
-              <button
-                onClick={() => update('ai_chatbot_summary_prompt', DEFAULTS.ai_chatbot_summary_prompt)}
-                style={{
-                  marginTop: 6, fontSize: '0.75rem', color: 'var(--text-muted)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '2px 0', textDecoration: 'underline',
-                }}
-              >
-                Remettre le prompt par défaut
-              </button>
-            </div>
-
-            {/* Chatbot News Prompt */}
-            <div style={{ marginTop: 12 }}>
-              <div className={styles.rowName} style={{ marginBottom: 6 }}>Prompt : Annonces clés (Chatbot)</div>
-              <textarea
-                value={settings.ai_chatbot_news_prompt}
-                onChange={e => update('ai_chatbot_news_prompt', e.target.value)}
-                rows={4}
-                style={{
-                  width: '100%', boxSizing: 'border-box', background: 'var(--bg-base)',
-                  border: '1px solid var(--border-subtle)', borderRadius: 6,
-                  color: 'var(--text-primary)', fontSize: '0.85rem', padding: '10px 12px',
-                  resize: 'vertical', outline: 'none', lineHeight: 1.5,
-                  transition: 'border-color 0.15s',
-                }}
-                onFocus={e => { e.currentTarget.style.borderColor = 'var(--brand-500, #6366f1)' }}
-                onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)' }}
-              />
-              <button
-                onClick={() => update('ai_chatbot_news_prompt', DEFAULTS.ai_chatbot_news_prompt)}
-                style={{
-                  marginTop: 6, fontSize: '0.75rem', color: 'var(--text-muted)',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '2px 0', textDecoration: 'underline',
-                }}
-              >
-                Remettre le prompt par défaut
-              </button>
-            </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Footer */}
+        {/* ── Footer ─────────────────────────────────────────────── */}
         <div className={styles.footer}>
           <span className={styles.version}>Albatros v1.0.0</span>
         </div>

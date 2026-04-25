@@ -1,43 +1,49 @@
-/* SettingsPanel.module.css */
+/* SettingsPanel.module.css — Full-page tabbed settings layout */
 
+/* ── Overlay / page ──────────────────────────────────────────────────── */
 .overlay {
   position: fixed;
   inset: 0;
   background: var(--bg-overlay);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px);
   z-index: var(--z-modal);
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   animation: fadeIn 150ms var(--ease-out);
 }
 
+/* Centered full-page panel */
 .panel {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 540px;
-  max-height: 80vh;
-  overflow-y: auto;
+  max-width: 860px;
+  max-height: 100vh;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
+/* ── Header ──────────────────────────────────────────────────────────── */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
   background: var(--bg-surface);
-  z-index: 1;
+  flex-shrink: 0;
 }
 
 .headerTitle {
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .closeBtn {
@@ -46,24 +52,87 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-base);
   color: var(--text-muted);
+  transition: all var(--transition-fast);
 }
 .closeBtn:hover {
   background: var(--bg-elevated);
   color: var(--text-primary);
 }
 
+/* ── Tab layout ──────────────────────────────────────────────────────── */
 .body {
-  padding: var(--space-5) var(--space-6);
   display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* Section */
+/* Vertical tab sidebar */
+.tabSidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--space-4) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.tabBtn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: all var(--transition-fast);
+}
+.tabBtn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.tabBtnActive {
+  background: color-mix(in srgb, var(--brand-500), transparent 88%);
+  color: var(--brand-400);
+}
+.tabBtnActive:hover {
+  background: color-mix(in srgb, var(--brand-500), transparent 82%);
+}
+
+.tabIcon {
+  font-size: 15px;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Tab content area */
+.tabContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  scroll-behavior: smooth;
+}
+
+/* ── Section ─────────────────────────────────────────────────────────── */
 .section {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .sectionTitle {
@@ -72,6 +141,8 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Setting row */
@@ -96,9 +167,10 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: 2px;
+  line-height: 1.4;
 }
 
-/* Controls */
+/* ── Controls ────────────────────────────────────────────────────────── */
 .select {
   padding: 6px 10px;
   background: var(--bg-base);
@@ -108,6 +180,7 @@
   font-size: var(--text-sm);
   min-width: 120px;
   cursor: pointer;
+  transition: border-color var(--transition-fast);
 }
 .select:focus {
   outline: none;
@@ -123,6 +196,7 @@
   font-size: var(--text-sm);
   width: 80px;
   text-align: right;
+  transition: border-color var(--transition-fast);
 }
 .input:focus {
   outline: none;
@@ -185,6 +259,8 @@
   border-top: 1px solid var(--border-subtle);
   display: flex;
   justify-content: flex-end;
+  flex-shrink: 0;
+  background: var(--bg-surface);
 }
 
 .version {
@@ -231,13 +307,13 @@
   font-size: 14px;
 }
 
-/* Color Palette */
+/* Color Palette — ONLY pre-validated accessible swatches, no free picker */
 .colorPalette {
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  max-width: 200px;
+  max-width: 220px;
   justify-content: flex-end;
 }
 
@@ -278,26 +354,138 @@
   pointer-events: none;
 }
 
-.colorDivider {
-  width: 1px;
-  height: 24px;
-  background: var(--border-light);
-  margin: 0 2px;
+/* ── Textarea auto-grow ──────────────────────────────────────────────── */
+.promptTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  field-sizing: content; /* Progressive enhancement: auto-height where supported */
+}
+.promptTextarea:focus {
+  border-color: var(--brand-500);
 }
 
-.colorSwatchCustom {
-  overflow: hidden;
+/* ── Reset prompt button ─────────────────────────────────────────────── */
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.resetBtn:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+  background: rgba(248, 113, 113, 0.08);
 }
 
-.colorSwatchCustom[style*="conic-gradient"] {
+/* ── Advanced toggle ─────────────────────────────────────────────────── */
+.advancedToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all var(--transition-fast);
+  margin-bottom: var(--space-4);
+}
+.advancedToggle:hover {
+  color: var(--text-primary);
   border-color: var(--border-light);
 }
+.advancedToggleCaret {
+  margin-left: auto;
+  transition: transform var(--transition);
+}
+.advancedToggleOpen .advancedToggleCaret {
+  transform: rotate(90deg);
+}
 
-.colorInputHidden {
-  opacity: 0;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+/* ── Connection test ─────────────────────────────────────────────────── */
+.testBtn {
+  padding: 6px 14px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  min-width: 110px;
   cursor: pointer;
+  transition: all 0.2s;
+}
+.testBtnOk {
+  background: color-mix(in srgb, #22c55e 15%, var(--bg-base));
+  border-color: #22c55e;
+  color: #4ade80;
+}
+.testBtnError {
+  background: color-mix(in srgb, #ef4444 15%, var(--bg-base));
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+/* Diagnostic error message */
+.errorDiag {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  color: #f87171;
+  line-height: 1.5;
+}
+.errorDiagTitle {
+  font-weight: var(--weight-semi);
+  margin-bottom: 4px;
+}
+.errorDiagHint {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+/* ── AI section gradient title ───────────────────────────────────────── */
+.aiGradientTitle {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Manage feeds modal reuse */
+.managePanel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  height: 80vh;
 }
