@@ -248,12 +248,17 @@ export function AiDigestView() {
           return dict
         })
 
+        const safePromptStr = (str: string | null | undefined) => {
+          if (!str) return '';
+          return str.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/===/g, '---');
+        }
+
         const contextBlocks = articles.map((a: {id: number, url: string, title: string, content: string}) => `<source id="${a.id}">
   <metadata>
-    Titre: ${a.title}
+    Titre: ${safePromptStr(a.title)}
     ID DE RÉFÉRENCE: ${a.id}
   </metadata>
-  <content>${a.content}</content>
+  <content>${safePromptStr(a.content)}</content>
 </source>`).join('\n')
 
         let instructionSet = `Tu es un assistant analytique expert. Tu effectues un "Scan Profond" parmi les 10 000 derniers articles de la base pour répondre précisément.

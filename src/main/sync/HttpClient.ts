@@ -13,6 +13,7 @@
 
 
 import { URL } from 'url'
+import dns from 'dns/promises'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,16 +48,20 @@ const BLOCKED_PREFIXES = [
 
 /**
  * Returns true if the hostname resolves to a private network address.
- * This is a lightweight prefix check — it won't catch all cases but prevents
- * the most common SSRF vectors.
+ * Uses DNS resolution to catch DNS rebinding and obscured IPs.
  */
-function isPrivateHost(hostname: string): boolean {
-  // Reject bare IP addresses that match private ranges
-  for (const prefix of BLOCKED_PREFIXES) {
-    if (hostname.startsWith(prefix)) return true
-  }
-  // localhost is always blocked
+async function isPrivateHost(hostname: string): Promise<boolean> {
   if (hostname === 'localhost') return true
+  try {
+    const { address } = await dns.lookup(hostname)
+    if (address === '0.0.0.0' || address === '127.0.0.1' || address === '::1') return true
+    for (const prefix of BLOCKED_PREFIXES) {
+      if (address.startsWith(prefix)) return true
+    }
+  } catch (err) {
+    // If DNS fails to resolve, we allow it through so fetch handles the standard network error
+    return false
+  }
   return false
 }
 
@@ -81,22 +86,6 @@ export async function fetchFeed(
   lastEtag: string | null = null,
   lastModified: string | null = null,
 ): Promise<FetchFeedResult> {
-  // ── SSRF guard ──────────────────────────────────────────────────────────
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    throw new Error(`Invalid feed URL: ${url}`)
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`Unsupported protocol: ${parsed.protocol}`)
-  }
-
-  if (isPrivateHost(parsed.hostname)) {
-    throw new Error(`Blocked: URL resolves to a private address (${parsed.hostname})`)
-  }
-
   // ── Build request headers ───────────────────────────────────────────────
   const headers: Record<string, string> = {
     'User-Agent': USER_AGENT,
@@ -105,23 +94,68 @@ export async function fetchFeed(
   if (lastEtag)     headers['If-None-Match']     = lastEtag
   if (lastModified) headers['If-Modified-Since'] = lastModified
 
-  // ── Execute request ─────────────────────────────────────────────────────
+  // ── Execute request (with manual redirect & SSRF checks) ───────────────
   const controller = new AbortController()
   const timeout    = setTimeout(() => controller.abort(), RESPONSE_TIMEOUT_MS)
 
-  let response: Response
+  let currentUrl = url
+  let redirects = 0
+  const MAX_REDIRECTS = 5
+  let response: Response | null = null
+
   try {
-    response = await fetch(url, {
-      method:  'GET',
-      headers,
-      signal:  controller.signal,
-      redirect: 'follow',
-    })
+    while (redirects <= MAX_REDIRECTS) {
+      let parsed: URL
+      try {
+        parsed = new URL(currentUrl)
+      } catch {
+        throw new Error(`Invalid feed URL: ${currentUrl}`)
+      }
+
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error(`Unsupported protocol: ${parsed.protocol}`)
+      }
+
+      const isPrivate = await isPrivateHost(parsed.hostname)
+      if (isPrivate) {
+        throw new Error(`Blocked: URL resolves to a private address (${parsed.hostname})`)
+      }
+
+      const res = await fetch(currentUrl, {
+        method:  'GET',
+        headers,
+        signal:  controller.signal,
+        redirect: 'manual', // Prevent native following so we can SSRF-check the next hop
+      })
+
+      // Handle redirect
+      if (res.status >= 300 && res.status <= 399) {
+        const location = res.headers.get('location')
+        if (!location) {
+          response = res
+          break
+        }
+        currentUrl = new URL(location, currentUrl).href
+        redirects++
+        if (redirects > MAX_REDIRECTS) {
+          throw new Error(`Too many redirects fetching ${url}`)
+        }
+        continue
+      }
+
+      response = res
+      break
+    }
   } catch (err) {
     clearTimeout(timeout)
-    throw new Error(`Fetch failed for ${url}: ${err instanceof Error ? err.message : String(err)}`)
+    throw new Error(`Fetch failed for ${currentUrl}: ${err instanceof Error ? err.message : String(err)}`)
   }
+
   clearTimeout(timeout)
+
+  if (!response) {
+    throw new Error(`Fetch failed for ${url}: Unknown error`)
+  }
 
   const statusCode = response.status
 
@@ -138,19 +172,19 @@ export async function fetchFeed(
 
   // ── Non-200 responses ───────────────────────────────────────────────────
   if (!response.ok) {
-    throw new Error(`HTTP ${statusCode} fetching ${url}`)
+    throw new Error(`HTTP ${statusCode} fetching ${currentUrl}`)
   }
 
   // ── Read body with size cap ─────────────────────────────────────────────
   // Pre-check Content-Length to avoid downloading excessively large feeds into memory.
   const contentLength = response.headers.get('content-length')
   if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
-    throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes, Content-Length: ${contentLength}): ${url}`)
+    throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes, Content-Length: ${contentLength}): ${currentUrl}`)
   }
 
   const bodyText = await response.text()
   if (Buffer.byteLength(bodyText, 'utf8') > MAX_BODY_BYTES) {
-    throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes): ${url}`)
+    throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes): ${currentUrl}`)
   }
 
   return {
