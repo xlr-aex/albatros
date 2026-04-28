@@ -47,22 +47,24 @@ const BLOCKED_PREFIXES = [
 ]
 
 /**
- * Returns true if the hostname resolves to a private network address.
- * Uses DNS resolution to catch DNS rebinding and obscured IPs.
+ * Returns true if the hostname resolves to any private network address.
+ * Use { all: true } to check all possible resolved IPs (IPv4 & IPv6).
  */
 async function isPrivateHost(hostname: string): Promise<boolean> {
-  if (hostname === 'localhost') return true
+  const normalized = hostname.toLowerCase()
+  if (normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1') return true
+  
   try {
-    const { address } = await dns.lookup(hostname)
-    if (address === '0.0.0.0' || address === '127.0.0.1' || address === '::1') return true
-    for (const prefix of BLOCKED_PREFIXES) {
-      if (address.startsWith(prefix)) return true
-    }
+    const addresses = await dns.lookup(hostname, { all: true })
+    return addresses.some(addr => {
+      const ip = addr.address
+      if (ip === '0.0.0.0' || ip === '127.0.0.1' || ip === '::1') return true
+      return BLOCKED_PREFIXES.some(prefix => ip.startsWith(prefix))
+    })
   } catch (err) {
-    // If DNS fails to resolve, we allow it through so fetch handles the standard network error
+    // If DNS fails, we let fetch handle it (it will fail anyway)
     return false
   }
-  return false
 }
 
 // ─── Client ──────────────────────────────────────────────────────────────────
