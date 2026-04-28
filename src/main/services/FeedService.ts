@@ -134,8 +134,9 @@ export class FeedService {
 
   /** Returns a single feed by URL, or null if not found. */
   getByUrl(url: string): Feed | null {
-    const stmt = this.db.prepare('SELECT * FROM feeds WHERE url = ?')
-    const row = stmt.get(url) as Record<string, unknown>
+    const normalized = normalizeUrl(url)
+    const stmt = this.db.prepare('SELECT * FROM feeds WHERE url = ? OR url = ?')
+    const row = stmt.get(url, normalized) as Record<string, unknown>
     if (!row) return null
     return {
       ...row,
@@ -144,13 +145,10 @@ export class FeedService {
     } as Feed
   }
 
-  /**
-   * Inserts a new feed.  If a feed with the same URL already exists, returns
-   * its existing ID without modifying the record (idempotent).
-   */
   create(input: CreateFeedInput, _skipPersist = false): number {
-    // Check for existing feed
-    const existing = this.getByUrl(input.url)
+    // Check for existing feed (handles both raw and normalized versions)
+    const normalized = normalizeUrl(input.url)
+    const existing = this.getByUrl(normalized)
     if (existing) return existing.id
 
     const now = Math.floor(Date.now() / 1000)
@@ -161,7 +159,7 @@ export class FeedService {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     const info = stmt.run(
-        input.url,
+        normalized, // Always store normalized version for consistency
         input.title ?? null,
         input.site_url ?? null,
         input.description ?? null,
@@ -270,5 +268,28 @@ export class FeedService {
    */
   resetErrorCounts(): void {
     this.db.prepare('UPDATE feeds SET error_count = 0').run()
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Normalises a URL for duplicate detection.
+ * - Trims whitespace
+ * - Lowercases hostname
+ * - Removes trailing slash if path is empty or /
+ * - Keeps protocol, query params, and fragments
+ */
+export function normalizeUrl(urlStr: string): string {
+  try {
+    const url = new URL(urlStr.trim())
+    url.hostname = url.hostname.toLowerCase()
+    // Normalise trailing slash: /foo/ -> /foo, but / -> /
+    if (url.pathname.endsWith('/') && url.pathname.length > 1) {
+      url.pathname = url.pathname.slice(0, -1)
+    }
+    return url.toString()
+  } catch {
+    return urlStr.trim()
   }
 }

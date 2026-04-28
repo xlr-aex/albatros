@@ -247,9 +247,9 @@ export function ArticleReader() {
           'table','thead','tbody','tr','th','td',
           'div','span','section','article','aside',
           'mark','abbr','time','sup','sub',
-          'iframe', 'svg', 'path'
+          'svg', 'path'
         ],
-        ALLOWED_ATTR: ['href','src','alt','title','class','id','target','rel','width','height','datetime','allowfullscreen','allow','frameborder','style', 'viewBox', 'fill', 'd'],
+        ALLOWED_ATTR: ['href','src','alt','title','class','id','target','rel','width','height','datetime','style', 'viewBox', 'fill', 'd'],
         FORCE_BODY: true,
       })
     : null
