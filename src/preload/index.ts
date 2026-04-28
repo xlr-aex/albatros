@@ -85,6 +85,59 @@ const api = {
     import: ()                                              => ipcRenderer.invoke('opml:import'),
     export: ()                                              => ipcRenderer.invoke('opml:export'),
   },
+
+  // ── AI (Secure IPC Streaming) ───────────────────────────────────────────
+  ai: {
+    /**
+     * Starts a streaming chat request.
+     * Returns an unsubscribe/abort function.
+     */
+    streamChat: (
+      params: { 
+        provider: 'lmstudio' | 'ollama', 
+        baseUrl: string, 
+        model: string, 
+        systemPrompt: string, 
+        messages: { role: string; content: string }[],
+        requestId: string
+      },
+      onChunk: (chunk: string) => void,
+      onError: (err: string) => void,
+      onDone: () => void
+    ) => {
+      const { requestId } = params
+      
+      const chunkHandler = (_: unknown, chunk: string) => onChunk(chunk)
+      const errorHandler = (_: unknown, err: string) => {
+        cleanup()
+        onError(err)
+      }
+      const endHandler = () => {
+        cleanup()
+        onDone()
+      }
+
+      const cleanup = () => {
+        ipcRenderer.off(`ai:chat-chunk:${requestId}`, chunkHandler)
+        ipcRenderer.off(`ai:chat-error:${requestId}`, errorHandler)
+        ipcRenderer.off(`ai:chat-end:${requestId}`, endHandler)
+      }
+
+      ipcRenderer.on(`ai:chat-chunk:${requestId}`, chunkHandler)
+      ipcRenderer.on(`ai:chat-error:${requestId}`, errorHandler)
+      ipcRenderer.on(`ai:chat-end:${requestId}`, endHandler)
+
+      ipcRenderer.send('ai:chat-start', params)
+
+      // Return abort/cleanup function
+      return () => {
+        ipcRenderer.send('ai:chat-abort', requestId)
+        cleanup()
+      }
+    },
+    listModels: (params: { provider: 'lmstudio' | 'ollama', baseUrl: string }) => 
+      ipcRenderer.invoke('ai:list-models', params),
+  },
 }
 
 // Expose the API to the renderer under window.api

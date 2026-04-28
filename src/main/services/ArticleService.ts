@@ -370,7 +370,7 @@ export class ArticleService {
           existing.id
       )
 
-      return { id: existing.id, isNew: false }
+      return { id: Number(existing.id), isNew: false }
     }
 
     const now = Math.floor(Date.now() / 1000)
@@ -401,7 +401,7 @@ export class ArticleService {
     // In rare cases where IGNORE kicks in due to uniqueness violation not caught by SELECT
     if (info.changes === 0) {
         const fallBack = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as Record<string, unknown>
-        return { id: fallBack.id, isNew: false }
+        return { id: Number(fallBack.id), isNew: false }
     }
 
     return { id: Number(info.lastInsertRowid), isNew: true }

@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Albatros RSS Reader — Database Schema
--- SQLite via sql.js (WASM), version 1
+-- SQLite via better-sqlite3, version 1
 -- =============================================================================
 -- Naming conventions:
 --   Tables   : snake_case, plural
@@ -123,6 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_pub_global  ON articles (published_at DE
 -- Note: FTS4 uses a simpler tokeniser than FTS5; partial-word matching is limited.
 
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts4 (
+  content="articles",
   title,
   content_text,
   author

@@ -11,7 +11,7 @@
 
 **Albatros** is a privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers. 
 
-Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js WASM)**, Albatros offers a seamless bridge between the traditional web and a modern, offline-first desktop application, enhanced with an advanced local AI-powered RAG (Retrieval-Augmented Generation) assistant.
+Built on a robust foundation of **Electron**, **React 19**, and **better-sqlite3**, Albatros offers a high-performance, disk-backed database architecture. This ensures seamless bridge between the traditional web and a modern, offline-first desktop application, enhanced with an advanced local AI-powered RAG (Retrieval-Augmented Generation) assistant.
 
 ---
 
@@ -65,7 +65,7 @@ Albatros is designed for "power readers." Almost every action is mapped to a key
 
 Albatros follows a strict separation of concerns to maximize security and stability:
 
-- **Main Process**: Handles the SQLite database (`sql.js`), the Background Sync Engine, and secure networking via native `fetch` and custom FTS caching logic.
+- **Main Process**: Handles the SQLite database (**better-sqlite3**), the Background Sync Engine, and secure networking via native `fetch` and custom FTS logic. Every network request, including those for AI models, is executed securely in this process.
 - **Renderer Process**: A React 19 application using **Zustand** for state management and DOMPurify for HTML sanitization.
 - **Preload Script**: Acts as a secure, typed bridge between the two processes, exposing no raw Node.js APIs to the frontend.
 
