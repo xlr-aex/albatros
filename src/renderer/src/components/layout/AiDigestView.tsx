@@ -4,107 +4,11 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import styles from './AiDigestView.module.css'
 
-// ─── Helpers: Streams ─────────────────────────────────────────────────────────
+/**
+ * NOTE: Provider streaming logic (streamLmStudio, streamOllama) has been migrated 
+ * to the Main process (src/main/ipc/ai.ts) for security and CSP compliance.
+ */
 
-async function loadAiConfig() {
-  const all = await window.api.settings.getAll()
-  const provider = (all['ai_provider'] as 'lmstudio' | 'ollama') ?? 'lmstudio'
-  const defaultUrl = provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-  let baseUrl = (all['ai_base_url'] || defaultUrl).trim().replace(/\/$/, '')
-  if (provider === 'lmstudio' && baseUrl.endsWith('/v1')) {
-    baseUrl = baseUrl.slice(0, -3).trim()
-  }
-  return {
-    provider,
-    baseUrl,
-    model:   all['ai_model'] || (provider === 'ollama' ? 'llama3' : 'local-model'),
-    systemPrompt: 'Tu es Albatros AI, un assistant de veille analytique. Tu réponds en français de manière extrêmement rigoureuse et concise.',
-    summaryPrompt: String(all['ai_chatbot_summary_prompt'] || ""),
-    newsPrompt: String(all['ai_chatbot_news_prompt'] || ""),
-  }
-}
-
-async function* streamLmStudio(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
-  const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model:    config.model,
-      stream:   true,
-      messages: [
-        { role: 'system', content: config.systemPrompt },
-        ...messages
-      ],
-    }),
-  })
-  if (!res.ok) {
-    const errText = await res.text().catch(() => `HTTP ${res.status}`)
-    throw new Error(`LM Studio: ${res.status} — ${errText}`)
-  }
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') return
-      try {
-        const parsed = JSON.parse(data)
-        const deltaObj = parsed.choices?.[0]?.delta
-        if (deltaObj) {
-          const deltaStr = deltaObj.content || deltaObj.reasoning_content
-          if (deltaStr) yield deltaStr
-        }
-      } catch { /* ignore */ }
-    }
-  }
-}
-
-async function* streamOllama(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
-  const res = await fetch(`${config.baseUrl}/api/chat`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model:    config.model,
-      messages: [
-        { role: 'system', content: config.systemPrompt },
-        ...messages
-      ],
-    }),
-  })
-  if (!res.ok) {
-    const errText = await res.text().catch(() => `HTTP ${res.status}`)
-    throw new Error(`Ollama: ${res.status} — ${errText}`)
-  }
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
-      try {
-        const parsed = JSON.parse(trimmed)
-        if (parsed.message?.content) yield parsed.message.content
-        if (parsed.done) return
-      } catch { /* ignore */ }
-    }
-  }
-}
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
@@ -206,17 +110,26 @@ export function AiDigestView() {
     const signal = abortControllerRef.current.signal
 
     try {
-      const cfg = await loadAiConfig()
+      // 1. Load config
+      const allSettings = await window.api.settings.getAll()
+      const provider = (allSettings['ai_provider'] as 'lmstudio' | 'ollama') ?? 'lmstudio'
+      const defaultUrl = provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
+      let baseUrl = (allSettings['ai_base_url'] || defaultUrl).trim().replace(/\/$/, '')
+      if (provider === 'lmstudio' && baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3).trim()
+
+      const config = {
+        provider,
+        baseUrl,
+        model: allSettings['ai_model'] || (provider === 'ollama' ? 'llama3' : 'local-model'),
+        systemPrompt: 'Tu es Albatros AI, un assistant de veille analytique. Tu réponds en français de manière extrêmement rigoureuse et concise.',
+        summaryPrompt: String(allSettings['ai_chatbot_summary_prompt'] || ""),
+        newsPrompt: String(allSettings['ai_chatbot_news_prompt'] || ""),
+      }
       
-      // Auto-fetch model if needed
-      if (!cfg.model || cfg.model === 'local-model') {
-        const endpoint = cfg.provider === 'ollama' ? `${cfg.baseUrl}/api/tags` : `${cfg.baseUrl}/v1/models`
-        const mRes = await fetch(endpoint, { signal: AbortSignal.timeout(5000) }).catch(()=>null)
-        if (mRes && mRes.ok) {
-          const mData = await mRes.json()
-          const first = cfg.provider === 'ollama' ? mData.models?.[0]?.name : mData.data?.[0]?.id
-          if (first) cfg.model = first
-        }
+      // Auto-fetch model if needed via secure IPC
+      if (!config.model || config.model === 'local-model') {
+        const models = await window.api.ai.listModels({ provider: config.provider, baseUrl: config.baseUrl })
+        if (models && models.length > 0) config.model = models[0]
       }
 
       // Build parameters for SQLite Knowledge Base
@@ -228,8 +141,6 @@ export function AiDigestView() {
         timeframe: timeframe,
         search_query: (isGenericSummary || isNewsAlert) ? undefined : contentToSend 
       }
-      // Date filter logic moved to backend, today_only handled via timeframe
-      // if (timeframe === 'today') params.today_only = true
       
       if (sourceId.startsWith('group_')) params.group_id = parseInt(sourceId.split('_')[1])
       else if (sourceId.startsWith('feed_')) params.feed_id = parseInt(sourceId.split('_')[1])
@@ -237,7 +148,7 @@ export function AiDigestView() {
       const articles = await window.api.articles.getForDigest(params)
 
       // We alter the payload silently for the LLM without showing it in the UI
-      const finalPayload = [...messages]
+      const finalPayload: { role: 'user' | 'assistant', content: string }[] = updatedMessages.slice(0, -1) // use user history
       
       if (articles.length > 0) {
         setContextSources(prev => {
@@ -268,10 +179,10 @@ export function AiDigestView() {
 2. Utilise UNIQUEMENT les informations fournies.
 3. Si la réponse nécessite de synthétiser un grand nombre d'ID, regroupe-les intelligemment.`
 
-        if (isGenericSummary && cfg.summaryPrompt) {
-          instructionSet = cfg.summaryPrompt
-        } else if (isNewsAlert && cfg.newsPrompt) {
-          instructionSet = cfg.newsPrompt
+        if (isGenericSummary && config.summaryPrompt) {
+          instructionSet = config.summaryPrompt
+        } else if (isNewsAlert && config.newsPrompt) {
+          instructionSet = config.newsPrompt
         }
 
         finalPayload.push({
@@ -283,35 +194,51 @@ export function AiDigestView() {
 ${contextBlocks.substring(0, 150000)}
 </sources>
 
-=== QUESTION DE L'UTILISATEUR ===
+=== QUESTION DE l'UTILISATEUR ===
 ${contentToSend}`
         })
       } else {
-        // Fallback or casual follow-up without FTS match
-        finalPayload.push({
-          role: 'user',
-          content: contentToSend
-        })
+        finalPayload.push({ role: 'user', content: contentToSend })
       }
 
-      let streamFn
-      if (cfg.provider === 'ollama') streamFn = streamOllama(cfg, finalPayload, signal)
-      else streamFn = streamLmStudio(cfg, finalPayload, signal)
+      // ── Start Stream via secure IPC ──
+      const requestId = Math.random().toString(36).substring(7)
+      abortControllerRef.current = new AbortController() // Local abort ref for UI state
+
+      const stopStream = window.api.ai.streamChat(
+        {
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          systemPrompt: config.systemPrompt,
+          messages: finalPayload,
+          requestId
+        },
+        (chunk) => {
+          setMessages(prev => {
+            const newArr = [...prev]
+            const lastIndex = newArr.length - 1
+            if (lastIndex >= 0 && newArr[lastIndex].role === 'assistant') {
+              newArr[lastIndex] = { ...newArr[lastIndex], content: newArr[lastIndex].content + chunk }
+            }
+            return newArr
+          })
+        },
+        (err) => {
+          setErrorMsg(err)
+          setState('idle')
+        },
+        () => {
+          setState('done')
+        }
+      )
 
       setState('streaming')
-      for await (const chunk of streamFn) {
-        if (signal.aborted) break
-        // Append chunk to the last assistant message
-        setMessages(prev => {
-          const newArr = [...prev]
-          const lastIndex = newArr.length - 1
-          if (lastIndex >= 0 && newArr[lastIndex].role === 'assistant') {
-            newArr[lastIndex] = { ...newArr[lastIndex], content: newArr[lastIndex].content + chunk }
-          }
-          return newArr
-        })
-      }
-      setState('done')
+      
+      // Hook the local abort to the stop function
+      abortControllerRef.current.signal.addEventListener('abort', () => {
+        stopStream()
+      })
 
     } catch (err: unknown) {
       if ((err as Error).name === 'AbortError') {
