@@ -22,16 +22,23 @@ AFTER INSERT ON articles BEGIN
   VALUES (new.id, new.title, new.content_text, new.author);
 END;
 
--- After DELETE: remove the article from the full-text index.
-CREATE TRIGGER IF NOT EXISTS articles_ad_fts
-AFTER DELETE ON articles BEGIN
+-- Before DELETE: remove the article from the full-text index while content still exists.
+CREATE TRIGGER IF NOT EXISTS articles_bd_fts
+BEFORE DELETE ON articles BEGIN
   DELETE FROM articles_fts WHERE docid = old.id;
 END;
 
--- After UPDATE: update the FTS row.
+-- Before UPDATE: remove old terms from index.
+CREATE TRIGGER IF NOT EXISTS articles_bu_fts
+BEFORE UPDATE ON articles BEGIN
+  DELETE FROM articles_fts WHERE docid = old.id;
+END;
+
+-- After UPDATE: insert new terms into index.
 CREATE TRIGGER IF NOT EXISTS articles_au_fts
 AFTER UPDATE ON articles BEGIN
-  UPDATE articles_fts SET title = new.title, content_text = new.content_text, author = new.author WHERE docid = new.id;
+  INSERT INTO articles_fts (docid, title, content_text, author)
+  VALUES (new.id, new.title, new.content_text, new.author);
 END;
 
 -- ─── Unread Count Denormalisation Triggers ────────────────────────────────────
