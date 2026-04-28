@@ -10,7 +10,7 @@
  *  - Rebuilds the FTS5 index after mass deletions
  */
 
-import type { Database } from 'sql.js'
+import type { Database } from 'better-sqlite3'
 import type { SyncEngine } from './SyncEngine'
 import type { ArticleService } from '../services/ArticleService'
 import type { FeedService } from '../services/FeedService'

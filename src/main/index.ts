@@ -4,7 +4,7 @@
  *
  * Boot sequence:
  *  1. Wait for app.whenReady()
- *  2. Initialise sql.js database + run migrations
+ *  2. Initialise better-sqlite3 database + run migrations
  *  3. Instantiate all services (FeedService, ArticleService, etc.)
  *  4. Register all IPC handlers
  *  5. Create the BrowserWindow
@@ -66,7 +66,7 @@ function createWindow(): BrowserWindow {
       preload:          path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,    // Required for security
       nodeIntegration:  false,   // Never allow node in renderer
-      sandbox:          false,   // Needed for sql.js WASM in preload
+      sandbox:          false,   // Required for secure internal worker logic
       webviewTag:       true,    // Enable <webview> for embedded browser
       webSecurity:      true,    // Enforce security since AI now uses IPC
     },

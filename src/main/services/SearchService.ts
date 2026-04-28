@@ -68,18 +68,17 @@ export class SearchService {
       return rows.map(row => {
         const rawSnippet = String(row.snippet ?? '')
         return {
-           id: row.id,
-           feed_id: row.feed_id,
-           feed_title: row.feed_title,
-           feed_favicon: row.feed_favicon,
-           title: row.title,
-           author: row.author,
-           excerpt: row.excerpt,
-           published_at: row.published_at,
+           id: Number(row.id),
+           feed_id: Number(row.feed_id),
+           feed_title: row.feed_title ? String(row.feed_title) : null,
+           feed_favicon: row.feed_favicon ? String(row.feed_favicon) : null,
+           title: row.title ? String(row.title) : null,
+           author: row.author ? String(row.author) : null,
+           excerpt: row.excerpt ? String(row.excerpt) : null,
+           published_at: row.published_at ? Number(row.published_at) : null,
            is_read: row.is_read === 1,
-           is_starred: row.is_starred === 1,
            is_saved: row.is_saved === 1,
-           thumbnail_url: row.thumbnail_url || null,
+           thumbnail_url: row.thumbnail_url ? String(row.thumbnail_url) : null,
            rank: Number(row.rank),
            snippet: rawSnippet.replace(/\[\[\[|\]\]\]/g, ''),
         }

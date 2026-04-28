@@ -65,13 +65,13 @@ export function AiDigestView() {
   }, [])
 
   // Clear chat if knowledge base filters change
-  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, val: string) => {
+  const handleFilterChange = <T extends string>(setter: React.Dispatch<React.SetStateAction<T>>, val: string) => {
     if (messages.length > 0) {
       if (!window.confirm("Changer les filtres effacera la conversation en cours. Continuer ?")) {
         return
       }
     }
-    setter(val)
+    setter(val as unknown as T)
     setMessages([])
     setContextSources([])
     setErrorMsg('')

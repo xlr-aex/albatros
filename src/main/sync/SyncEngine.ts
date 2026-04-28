@@ -16,7 +16,7 @@
  */
 
 import { BrowserWindow } from 'electron'
-import type { Database } from 'sql.js'
+import type { Database } from 'better-sqlite3'
 import pLimit from 'p-limit'
 import { fetchFeed } from './HttpClient'
 import { parseFeed } from './FeedParser'
@@ -329,10 +329,8 @@ export class SyncEngine {
 
   private insertSyncLog(_feedId: number, skipPersist = false): number {
     try {
-      this.db.run(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`, [_feedId])
-      const res = this.db.exec('SELECT last_insert_rowid()')
-      if (!skipPersist) persistDatabase()
-      return Number(res[0].values[0][0])
+      const info = this.db.prepare(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`).run(_feedId)
+      return Number(info.lastInsertRowid)
     } catch {
       return 0
     }
@@ -348,13 +346,11 @@ export class SyncEngine {
   ): void {
     if (_logId === 0) return
     try {
-      this.db.run(
+      this.db.prepare(
         `UPDATE sync_log SET finished_at = strftime('%s','now'), articles_new = ?, articles_updated = ?, status = ?, error_message = ? WHERE id = ?`,
-        [_articlesNew, _articlesUpdated, _status, _error ?? null, _logId],
-      )
-      if (!skipPersist) persistDatabase()
-    } catch {
-      /* ignore */
+      ).run(_articlesNew, _articlesUpdated, _status, _error ?? null, _logId)
+    } catch (err) {
+      console.warn('[SyncEngine] Failed to update sync log:', err)
     }
   }
 

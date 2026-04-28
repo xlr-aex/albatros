@@ -365,7 +365,6 @@ export function ArticleReader() {
               </div>
             ) : (
               <webview
-                // @ts-expect-error - Webview tag is valid in Electron react but dom bindings may lack it
                 ref={webviewRef}
                 className={styles.embeddedFrame}
                 src={embeddedUrl}

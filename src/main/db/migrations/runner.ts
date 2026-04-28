@@ -71,7 +71,7 @@ const MIGRATIONS: Migration[] = [
  * Applies all pending migrations to `db` in version order.
  * This function is idempotent — already-applied versions are skipped.
  *
- * @param db - An open sql.js Database instance
+ * @param db - An open better-sqlite3 Database instance
  */
 export function runMigrations(db: Database): void {
   // Find the highest applied version (0 if table doesn't exist yet)

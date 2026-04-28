@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Albatros RSS Reader — Database Schema
--- SQLite via sql.js (WASM), version 1
+-- SQLite via better-sqlite3, version 1
 -- =============================================================================
 -- Naming conventions:
 --   Tables   : snake_case, plural
