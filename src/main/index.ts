@@ -12,7 +12,7 @@
  *  7. On before-quit: stop scheduler, close DB
  */
 
-import { app, BrowserWindow, shell, session } from 'electron'
+import { app, BrowserWindow, shell, session, ipcMain } from 'electron'
 
 // Suppress harmless Chromium DevTools Autofill errors that spam the terminal
 const originalStderrWrite = process.stderr.write.bind(process.stderr);
@@ -40,6 +40,7 @@ import { ArticleService }  from './services/ArticleService'
 import { SearchService }   from './services/SearchService'
 import { SettingsService } from './services/SettingsService'
 import { OpmlService }     from './services/OpmlService'
+import { SummaryService }  from './services/SummaryService'
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
 import { SyncEngine } from './sync/SyncEngine'
@@ -93,6 +94,7 @@ function createWindow(): BrowserWindow {
 // ─── Application lifecycle ────────────────────────────────────────────────────
 
 let scheduler: Scheduler | null = null
+let summaryService: SummaryService | null = null
 
 async function bootstrap(): Promise<void> {
   // ── 0. Adblock engine ──────────────────────────────────────────────────
@@ -117,33 +119,88 @@ async function bootstrap(): Promise<void> {
   // ── 0b. Reddit embed fix ────────────────────────────────────────────────
   //    Reddit sends X-Frame-Options: SAMEORIGIN (and matching CSP frame-ancestors)
   //    which Chromium enforces even inside <webview> elements, causing a blank page.
-  //    We strip those headers on the adblock session (used by <webview>) for Reddit only.
+  //    We strip those headers on both the default and adblock sessions for Reddit only.
+  //    We also modify request headers for mainFrame navigations to bypass anti-embed detection.
   try {
-    const adblockSession = session.fromPartition('persist:adblock')
-    adblockSession.webRequest.onHeadersReceived(
-      { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*'] },
-      (details, callback) => {
-        const headers: Record<string, string[]> = {}
-        for (const [key, val] of Object.entries(details.responseHeaders ?? {})) {
-          const lower = key.toLowerCase()
-          if (lower === 'x-frame-options') continue // drop entirely
-          if (lower === 'content-security-policy') {
-            // Strip only the frame-ancestors directive; leave the rest intact
-            const filtered = (val as string[])
-              .map(v => v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim().replace(/;$/, '').trim())
-              .filter(Boolean)
-            if (filtered.length) headers[key] = filtered
-            continue
+    const sessions = [
+      session.defaultSession,
+      session.fromPartition('persist:adblock')
+    ]
+
+    for (const ses of sessions) {
+      // Clean User-Agent helper (removes Electron/Albatros identifiers to avoid bot detection)
+      const cleanUA = ses.getUserAgent()
+        .replace(/\s+Albatros\/\S+/i, '')
+        .replace(/\s+Electron\/\S+/i, '')
+
+      // 1. Intercept outgoing request headers
+      ses.webRequest.onBeforeSendHeaders(
+        { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*'] },
+        (details, callback) => {
+          const headers = { ...details.requestHeaders }
+          
+          const setHeader = (name: string, value: string) => {
+            const lower = name.toLowerCase()
+            for (const key of Object.keys(headers)) {
+              if (key.toLowerCase() === lower) {
+                delete headers[key]
+              }
+            }
+            headers[name] = value
           }
-          headers[key] = val as string[]
+
+          setHeader('User-Agent', cleanUA)
+
+          if (details.resourceType === 'mainFrame') {
+            setHeader('Sec-Fetch-Dest', 'document')
+            setHeader('Sec-Fetch-Mode', 'navigate')
+            setHeader('Sec-Fetch-Site', 'none')
+            setHeader('Sec-Fetch-User', '?1')
+            
+            // If the referer is local, rewrite it to reddit.com to bypass iframe detection
+            let hasLocalReferer = false
+            for (const key of Object.keys(headers)) {
+              if (key.toLowerCase() === 'referer') {
+                const val = headers[key]
+                if (val && (val.includes('localhost') || val.includes('127.0.0.1') || val.includes('file://'))) {
+                  hasLocalReferer = true
+                }
+              }
+            }
+            if (hasLocalReferer) {
+              setHeader('Referer', 'https://www.reddit.com/')
+            }
+          }
+
+          callback({ requestHeaders: headers })
         }
-        callback({ responseHeaders: headers })
-      }
-    )
-    console.log('[Embed] Reddit X-Frame-Options bypass active')
+      )
+
+      // 2. Intercept incoming response headers
+      ses.webRequest.onHeadersReceived(
+        { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*'] },
+        (details, callback) => {
+          const headers: Record<string, string[]> = {}
+          for (const [key, val] of Object.entries(details.responseHeaders ?? {})) {
+            const lower = key.toLowerCase()
+            if (lower === 'x-frame-options') continue // drop entirely
+            if (lower === 'content-security-policy') {
+              // Strip only the frame-ancestors directive; leave the rest intact
+              const filtered = (val as string[])
+                .map(v => v.replace(/frame-ancestors[^;]*(;|$)/gi, '').trim().replace(/;$/, '').trim())
+                .filter(Boolean)
+              if (filtered.length) headers[key] = filtered
+              continue
+            }
+            headers[key] = val as string[]
+          }
+          callback({ responseHeaders: headers })
+        }
+      )
+    }
+    console.log('[Embed] Reddit request/response header bypass active on all sessions')
   } catch (err) {
     console.error('[Embed] Failed to set up Reddit header intercept:', err)
-    // Non-fatal
   }
 
   // ── 0c. Local AI CORS bypass ────────────────────────────────────────────
@@ -172,22 +229,45 @@ async function bootstrap(): Promise<void> {
 
   // ── 2. Services ──────────────────────────────────────────────────────────
   const feedService     = new FeedService(db)
-  feedService.resetErrorCounts() // Clean state on start
+  feedService.clearTransientRateLimitErrors()
 
   const articleService  = new ArticleService(db)
   const searchService   = new SearchService(db)
   const settingsService = new SettingsService(db)
   const opmlService     = new OpmlService(feedService)
 
-  // ── 3. Sync engine ───────────────────────────────────────────────────────
+  // ── 3. Engine ────────────────────────────────────────────────────────────
   const syncEngine = new SyncEngine(feedService, articleService, db)
   scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
+  summaryService = new SummaryService(db, settingsService, articleService)
+
+  syncEngine.onSyncComplete = () => {
+    summaryService?.trigger()
+  }
 
   // ── 4. IPC ───────────────────────────────────────────────────────────────
   registerFeedHandlers(feedService, opmlService, scheduler)
   registerArticleHandlers(articleService, searchService, feedService)
   registerSettingsHandlers(settingsService)
   registerSyncHandlers(scheduler)
+
+  ipcMain.handle('summary:status-get', () => {
+    return {
+      pending: summaryService?.getPendingCount() ?? 0,
+      total: summaryService?.getTotalCount() ?? 0,
+      isProcessing: false
+    }
+  })
+  ipcMain.handle('summary:trigger', () => {
+    summaryService?.trigger()
+  })
+
+  ipcMain.on('debug:log', (_event, msg) => {
+    console.log('[Renderer Debug]', msg)
+  })
+
+  // Start background summarization
+  summaryService.start()
 
   // ── 5. Window ────────────────────────────────────────────────────────────
   createWindow()
@@ -212,5 +292,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   scheduler?.stop()
+  summaryService?.stop()
   closeDatabase()
 })

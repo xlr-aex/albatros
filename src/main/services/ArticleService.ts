@@ -31,6 +31,7 @@ export interface Article {
   is_starred: boolean
   is_saved: boolean
   thumbnail_url: string | null
+  summary: string | null
   created_at: number
   comments?: Article[]
 }
@@ -181,32 +182,14 @@ export class ArticleService {
   }
 
   getForDigest(params: ArticleListParams & { limit?: number; search_query?: string; timeframe?: string }): { id: number; url: string; title: string; content: string }[] {
-    let limit = params.limit ?? 10000 
+    let limit = params.limit ?? 300
     let conditions: string[] = []
     let bindings: (string | number)[] = []
     let fromClause = 'FROM articles a JOIN feeds f ON f.id = a.feed_id'
     
-    let selectContent = "SUBSTR(COALESCE(a.content_text, a.excerpt, ''), 1, 150) AS content"
+    let selectContent = "COALESCE(a.summary, SUBSTR(COALESCE(a.content_text, a.excerpt, ''), 1, 800)) AS content"
 
-    if (params.search_query) {
-      const stopWords = new Set(['le','la','les','un','une','des','de','du','et','ou','est','sont','a','à','en','pour','qui','que','quoi','dont','où','dans','sur','sous','vers','avec','sans','fais','fait','moi','peux','tu','je','il','elle','on','nous','vous','ils','elles','pas','ne','plus','moins','très','trop','quel','quelle','quels','quelles','comment','pourquoi','quand','combien','ce','cet','cette','ces','mon','ton','son','ma','ta','sa','mes','tes','ses','notre','votre','leur','nos','vos','leurs', 'quoi', 'tout', 'tous', 'résumé', 'resumé', 'résume', 'resume', 'donne', 'parle', 'dis', 'actu', 'actualité', 'actualités', 'news', 'nouveau', 'nouveaux', 'nouvelles', 'article', 'articles'])
-
-      const words = params.search_query.trim()
-        .toLowerCase()
-        .replace(/[^\w\s\u00C0-\u017F]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length > 1 && !stopWords.has(w))
-
-      if (words.length > 0) {
-        fromClause += ' JOIN articles_fts fts ON fts.docid = a.id'
-        const ftsQuery = words.map(w => `"${w}"*`).join(' OR ')
-        conditions.push('articles_fts MATCH ?')
-        bindings.push(ftsQuery)
-        selectContent = "snippet(articles_fts, '[[', ']]', '...', -1, 40) AS content"
-        limit = 10000 
-      }
-    }
-
+    // Build base filter conditions (timeframe, feed, group) first
     if (params.feed_id !== undefined) {
       conditions.push('a.feed_id = ?')
       bindings.push(params.feed_id)
@@ -227,6 +210,64 @@ export class ArticleService {
       const offset = 86400 * 30
       conditions.push('a.published_at >= ?')
       bindings.push(Math.floor(Date.now() / 1000) - offset)
+    }
+
+    if (params.search_query) {
+      const stopWords = new Set([
+        'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'et', 'ou', 'est', 'sont', 'a', 'à', 'en', 'pour', 
+        'qui', 'que', 'quoi', 'dont', 'où', 'dans', 'sur', 'sous', 'vers', 'avec', 'sans', 'fais', 'fait', 'moi', 
+        'peux', 'tu', 'je', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles', 'pas', 'ne', 'plus', 'moins', 
+        'très', 'trop', 'quel', 'quelle', 'quels', 'quelles', 'comment', 'pourquoi', 'quand', 'combien', 'ce', 
+        'cet', 'cette', 'ces', 'mon', 'ton', 'son', 'ma', 'ta', 'sa', 'mes', 'tes', 'ses', 'notre', 'votre', 
+        'leur', 'nos', 'vos', 'leurs', 'tout', 'tous', 'résumé', 'resumé', 'résume', 'resume', 'donne', 'parle', 
+        'dis', 'actu', 'actualité', 'actualités', 'news', 'nouveau', 'nouveaux', 'nouvelles', 'article', 'articles',
+        'qu', 'se', 'me', 'te', 'aux', 'par', 'mais', 'donc', 'car', 'ni', 'si', 'y', 'bien', 'aussi', 'comme', 
+        'alors', 'puis', 'encore', 'ici', 'lors', 'même', 'peu', 'surtout', 'toute', 'toutes', 'faire', 'dois', 
+        'doit', 'devrait', 'peut', 'peuvent', 'veux', 'veut', 'veulent', 'va', 'vont', 'ai', 'as', 'avons', 
+        'avez', 'ont', 'suis', 'es', 'est', 'sommes', 'êtes', 'été', 'étiez', 'étaient', 'étais', 'était'
+      ])
+
+      const words = params.search_query.trim()
+        .toLowerCase()
+        .replace(/[^\w\s\u00C0-\u017F]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 1 && !stopWords.has(w))
+
+      if (words.length > 0) {
+        fromClause += ' JOIN articles_fts fts ON fts.docid = a.id'
+        
+        // Strategy: Try AND first, fall back to OR if few results found.
+        const ftsQueryAnd = words.map(w => `"${w}"*`).join(' AND ')
+        
+        const tempConditions = [...conditions, 'articles_fts MATCH ?']
+        const tempBindings = [...bindings, ftsQueryAnd]
+        const tempWhere = tempConditions.length > 0 ? `WHERE ${tempConditions.join(' AND ')}` : ''
+        const sqlAnd = `
+          SELECT a.id
+          ${fromClause}
+          ${tempWhere}
+          LIMIT 10
+        `
+        
+        let hasEnoughAndResults = false
+        try {
+          const andRows = this.db.prepare(sqlAnd).all(...tempBindings)
+          if (andRows.length >= 10) {
+            hasEnoughAndResults = true
+          }
+        } catch (err) {
+          console.error('[RAG] AND query pre-check failed:', err)
+        }
+
+        const ftsQuery = hasEnoughAndResults 
+          ? ftsQueryAnd 
+          : words.map(w => `"${w}"*`).join(' OR ')
+
+        conditions.push('articles_fts MATCH ?')
+        bindings.push(ftsQuery)
+        
+        selectContent = "snippet(articles_fts, '[[', ']]', '...', -1, 100) AS content"
+      }
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -349,7 +390,7 @@ export class ArticleService {
   // ── Writes ────────────────────────────────────────────────────────────────
 
   upsert(input: UpsertArticleInput): { id: number; isNew: boolean } {
-    const existing = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as Record<string, unknown>
+    const existing = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as { id: number } | undefined
     if (existing) {
       this.db.prepare(
         `UPDATE articles SET
@@ -359,7 +400,13 @@ export class ArticleService {
            excerpt = COALESCE(?, excerpt),
            enclosure_type = COALESCE(?, enclosure_type),
            thumbnail_url = COALESCE(?, thumbnail_url)
-         WHERE id = ?`
+          WHERE id = ?
+            AND (COALESCE(?, title) IS NOT title
+              OR COALESCE(?, content_html) IS NOT content_html
+              OR COALESCE(?, content_text) IS NOT content_text
+              OR COALESCE(?, excerpt) IS NOT excerpt
+              OR COALESCE(?, enclosure_type) IS NOT enclosure_type
+              OR COALESCE(?, thumbnail_url) IS NOT thumbnail_url)`
       ).run(
           input.title ?? null,
           input.content_html ?? null,
@@ -367,7 +414,13 @@ export class ArticleService {
           input.excerpt ?? null,
           input.enclosure_type ?? null,
           input.thumbnail_url ?? null,
-          existing.id
+          existing.id,
+          input.title ?? null,
+          input.content_html ?? null,
+          input.content_text ?? null,
+          input.excerpt ?? null,
+          input.enclosure_type ?? null,
+          input.thumbnail_url ?? null
       )
 
       return { id: existing.id, isNew: false }
@@ -400,11 +453,25 @@ export class ArticleService {
     
     // In rare cases where IGNORE kicks in due to uniqueness violation not caught by SELECT
     if (info.changes === 0) {
-        const fallBack = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as Record<string, unknown>
+        const fallBack = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as { id: number }
         return { id: fallBack.id, isNew: false }
     }
 
     return { id: Number(info.lastInsertRowid), isNew: true }
+  }
+
+  /** Upserts a feed batch in one SQLite transaction to avoid per-row commits. */
+  upsertMany(inputs: UpsertArticleInput[]): { articlesNew: number; articlesUpdated: number } {
+    let articlesNew = 0
+    const run = this.db.transaction(() => {
+      for (const input of inputs) {
+        if (!input.guid) continue
+        const result = this.upsert(input)
+        if (result.isNew) articlesNew++
+      }
+    })
+    run()
+    return { articlesNew, articlesUpdated: inputs.length - articlesNew }
   }
 
   setRead(id: number, value: boolean): void {
@@ -418,6 +485,10 @@ export class ArticleService {
     } else {
       this.db.prepare('DELETE FROM read_later WHERE article_id = ?').run(id)
     }
+  }
+
+  updateSummary(id: number, summary: string): void {
+    this.db.prepare('UPDATE articles SET summary = ? WHERE id = ?').run(summary, id)
   }
 
   markAllRead(feedId?: number): number {

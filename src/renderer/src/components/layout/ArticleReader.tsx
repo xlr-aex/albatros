@@ -6,10 +6,18 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import DOMPurify from 'dompurify'
+import type HlsType from 'hls.js'
 import { useArticleStore } from '../../store/articleStore'
 import styles from './ArticleReader.module.css'
 import { formatDate, unescapeHtml } from '../../utils/format'
 import { HighlightText } from './HighlightText'
+import { normalizeArticleHtml } from '../../utils/articleHtml'
+
+const cleanUserAgent = typeof window !== 'undefined'
+  ? window.navigator.userAgent
+      .replace(/\s+albatros\/\S+/i, '')
+      .replace(/\s+electron\/\S+/i, '')
+  : ''
 
 interface RedditComment {
   id: number | string
@@ -19,6 +27,14 @@ interface RedditComment {
   published_at?: number
   content_html?: string
   replies?: RedditComment[]
+}
+
+interface RedditVideoInfo {
+  fallbackUrl: string | null
+  hlsUrl: string | null
+  poster: string | null
+  width?: number
+  height?: number
 }
 
 const CommentNode = ({ comment, depth = 0 }: { comment: RedditComment; depth?: number }) => {
@@ -115,6 +131,115 @@ const RetroPlayerNode = React.memo(({
   )
 })
 
+const RedditVideoNode = React.memo(({
+  video,
+  fallbackPoster,
+  postUrl,
+  playerUrl,
+}: {
+  video: RedditVideoInfo | null
+  fallbackPoster?: string | null
+  postUrl?: string | null
+  playerUrl: string | null
+}) => {
+  const [hasFailed, setHasFailed] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const poster = video?.poster || fallbackPoster || undefined
+  const playerAssetId = playerUrl?.match(/\/video\/([^/]+)\/player/i)?.[1]
+  const hlsUrl = video?.hlsUrl
+    || (playerAssetId ? `https://v.redd.it/${encodeURIComponent(playerAssetId)}/HLSPlaylist.m3u8` : null)
+  const mp4Url = video?.fallbackUrl || null
+
+  useEffect(() => {
+    setHasFailed(false)
+    const element = videoRef.current
+    if (!element) return
+
+    let hls: HlsType | null = null
+    let cancelled = false
+    let usingMp4Fallback = false
+    const loadMp4Fallback = () => {
+      if (!mp4Url || usingMp4Fallback) {
+        setHasFailed(true)
+        return
+      }
+      usingMp4Fallback = true
+      hls?.destroy()
+      hls = null
+      element.src = mp4Url
+      element.load()
+    }
+
+    const loadVideo = async () => {
+      if (hlsUrl && element.canPlayType('application/vnd.apple.mpegurl')) {
+        element.src = hlsUrl
+        return
+      }
+      if (hlsUrl) {
+        const { default: Hls } = await import('hls.js')
+        if (cancelled) return
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 30,
+          })
+          hls.loadSource(hlsUrl)
+          hls.attachMedia(element)
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (data.fatal) loadMp4Fallback()
+          })
+          return
+        }
+      }
+      if (mp4Url) element.src = mp4Url
+      else setHasFailed(true)
+    }
+    void loadVideo()
+
+    return () => {
+      cancelled = true
+      hls?.destroy()
+      element.removeAttribute('src')
+      element.load()
+    }
+  }, [hlsUrl, mp4Url, postUrl])
+
+  if (!playerUrl && !video) return null
+
+  if ((!hlsUrl && !mp4Url) || hasFailed) {
+    return (
+      <button
+        type="button"
+        className="reddit-video-fallback"
+        onClick={() => postUrl && window.open(postUrl, '_blank')}
+        style={poster ? { backgroundImage: `url(${JSON.stringify(poster).slice(1, -1)})` } : undefined}
+        aria-label="Open Reddit video in browser"
+      >
+        <span className="reddit-video-play" aria-hidden="true">▶</span>
+        <span>Open video on Reddit</span>
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className="reddit-video-container"
+      style={video?.width && video?.height ? { aspectRatio: `${video.width} / ${video.height}` } : undefined}
+    >
+      <video
+        ref={videoRef}
+        className="reddit-video-element"
+        controls
+        playsInline
+        preload="metadata"
+        poster={poster}
+        onError={() => { if (!hlsUrl) setHasFailed(true) }}
+      />
+    </div>
+  )
+})
+
 type WebviewLoadingEvent = Event & {
   errorCode?: number
   errorDescription?: string
@@ -139,7 +264,96 @@ export function ArticleReader() {
   const [isLoadingComments, setIsLoadingComments] = useState(false)
   const [activeYtVideos, setActiveYtVideos] = useState<string[]>([])
   const [redditSelftext, setRedditSelftext] = useState<string | null>(null)
+  const [redditVideo, setRedditVideo] = useState<RedditVideoInfo | null>(null)
   const frozenContentHtmlRef = useRef<string | null>(null)
+
+  const [redditJsonUrl, setRedditJsonUrl] = useState<string | null>(null)
+  const hiddenWebviewRef = useRef<any>(null)
+
+  const handleHiddenWebviewDomReady = useCallback(async () => {
+    const webview = hiddenWebviewRef.current
+    if (!webview) return
+    try {
+      const text = await webview.executeJavaScript('document.body.innerText')
+      const json = JSON.parse(text)
+      
+      const commentsData = json[1]?.data?.children || []
+      const parseComment = (child: any): any => {
+        if (child.kind === 't1' && child.data && child.data.body) {
+          let html = child.data.body_html || ''
+          html = html.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+
+          const replies: any[] = []
+          if (child.data.replies && child.data.replies.data && child.data.replies.data.children) {
+            for (const replyNode of child.data.replies.data.children) {
+              const reply = parseComment(replyNode)
+              if (reply) replies.push(reply)
+            }
+          }
+
+          return {
+            id: child.data.id,
+            author: child.data.author,
+            content_html: html || child.data.body,
+            published_at: child.data.created_utc,
+            score: child.data.score || 0,
+            is_submitter: child.data.is_submitter || false,
+            replies,
+          }
+        }
+        return null
+      }
+
+      const comments = commentsData.map(parseComment).filter(Boolean)
+
+      let selftextHtml = null
+      const postData = json[0]?.data?.children?.[0]?.data
+      if (postData && postData.selftext_html) {
+        selftextHtml = postData.selftext_html
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+      }
+
+      const mediaPost = [postData, ...(postData?.crosspost_parent_list || [])]
+        .find(post => post?.secure_media?.reddit_video || post?.media?.reddit_video)
+      const videoData = mediaPost?.secure_media?.reddit_video || mediaPost?.media?.reddit_video
+      const decodeUrl = (value: unknown): string | null =>
+        typeof value === 'string' ? value.replace(/&amp;/g, '&') : null
+
+      if (videoData) {
+        setRedditVideo({
+          fallbackUrl: decodeUrl(videoData.fallback_url),
+          hlsUrl: decodeUrl(videoData.hls_url),
+          poster: decodeUrl(
+            mediaPost?.preview?.images?.[0]?.source?.url
+            || postData?.preview?.images?.[0]?.source?.url,
+          ),
+          width: typeof videoData.width === 'number' ? videoData.width : undefined,
+          height: typeof videoData.height === 'number' ? videoData.height : undefined,
+        })
+      }
+
+      setLiveComments(comments)
+      if (selftextHtml) setRedditSelftext(selftextHtml)
+    } catch (err) {
+      console.warn('Failed to parse Reddit comments from hidden webview:', err)
+    } finally {
+      setIsLoadingComments(false)
+      setRedditJsonUrl(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    const webview = hiddenWebviewRef.current
+    if (!webview) return
+
+    const onDomReady = () => {
+      handleHiddenWebviewDomReady()
+    }
+    webview.addEventListener('dom-ready', onDomReady)
+    return () => {
+      webview.removeEventListener('dom-ready', onDomReady)
+    }
+  }, [redditJsonUrl, handleHiddenWebviewDomReady])
 
   // Scroll to top whenever a new article is opened
   useEffect(() => {
@@ -149,17 +363,15 @@ export function ArticleReader() {
     setLiveComments([])
     setActiveYtVideos([])
     setRedditSelftext(null)
+    setRedditVideo(null)
     frozenContentHtmlRef.current = null
 
     if (selectedArticle?.url && selectedArticle.url.includes('reddit.com')) {
       setIsLoadingComments(true)
-      window.api.articles.getRedditComments(selectedArticle.url)
-        .then((res: { comments: RedditComment[], selftextHtml?: string }) => {
-          setLiveComments(res.comments || (res as Record<string, unknown>))
-          if (res.selftextHtml) setRedditSelftext(res.selftextHtml)
-        })
-        .catch(console.error)
-        .finally(() => setIsLoadingComments(false))
+      const cleanUrl = selectedArticle.url.replace(/\/$/, '') + '/.json'
+      setRedditJsonUrl(cleanUrl)
+    } else {
+      setRedditJsonUrl(null)
     }
   }, [selectedArticle?.id, selectedArticle?.url])
 
@@ -173,22 +385,35 @@ export function ArticleReader() {
     const wv = webviewRef.current
     if (!wv) return
 
-    const onStart = () => { setIsWebviewLoading(true); setWebviewError(null) }
-    const onStop  = () => setIsWebviewLoading(false)
+    const onStart = () => {
+      window.api.debug.log(`[Webview Status] Start Loading: ${embeddedUrl}`)
+      setIsWebviewLoading(true)
+      setWebviewError(null)
+    }
+    const onStop  = () => {
+      window.api.debug.log('[Webview Status] Stop Loading')
+      setIsWebviewLoading(false)
+    }
     const onFail  = (e: WebviewLoadingEvent) => {
       if (e.errorCode === -3) return // ERR_ABORTED — normal for redirects
+      window.api.debug.log(`[Webview Status] Failed to load: ${e.errorDescription} (code ${e.errorCode})`)
       setIsWebviewLoading(false)
       setWebviewError(`Could not load page (${e.errorDescription || 'unknown error'})`)
+    }
+    const onConsole = (e: any) => {
+      window.api.debug.log(`[Webview Content] [Level ${e.level}] ${e.message} (${e.sourceId}:${e.line})`)
     }
 
     wv.addEventListener('did-start-loading', onStart)
     wv.addEventListener('did-stop-loading',  onStop)
     wv.addEventListener('did-fail-load',     onFail)
+    wv.addEventListener('console-message',   onConsole)
 
     return () => {
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading',  onStop)
       wv.removeEventListener('did-fail-load',     onFail)
+      wv.removeEventListener('console-message',   onConsole)
     }
   }, [embeddedUrl])
 
@@ -224,7 +449,7 @@ export function ArticleReader() {
 
   function openInApp(url: string) {
     const targetUrl = /reddit\.com/i.test(url)
-      ? url.replace(/https?:\/\/(?:www\.|new\.|np\.)?reddit\.com/i, 'https://old.reddit.com')
+      ? url.replace(/https?:\/\/(?:www\.|new\.|np\.)?reddit\.com/i, 'https://www.reddit.com')
       : url
     setEmbeddedUrl(targetUrl)
     setLinkPopup(null)
@@ -249,7 +474,7 @@ export function ArticleReader() {
           'mark','abbr','time','sup','sub',
           'iframe', 'svg', 'path'
         ],
-        ALLOWED_ATTR: ['href','src','alt','title','class','id','target','rel','width','height','datetime','allowfullscreen','allow','frameborder','style', 'viewBox', 'fill', 'd'],
+         ALLOWED_ATTR: ['href','src','srcset','alt','title','class','id','target','rel','width','height','datetime','allowfullscreen','allow','frameborder','style', 'viewBox', 'fill', 'd', 'data-src', 'data-lazy-src', 'data-original'],
         FORCE_BODY: true,
       })
     : null
@@ -295,6 +520,37 @@ export function ArticleReader() {
     
     return doc.body.innerHTML
   }, [safeHtml, currentSearchQuery])
+
+  const normalizedHtml = React.useMemo(
+    () => normalizeArticleHtml(
+      highlightedHtml || safeHtml || '',
+      selectedArticle?.url,
+      selectedArticle?.thumbnail_url,
+    ),
+    [highlightedHtml, safeHtml, selectedArticle?.url, selectedArticle?.thumbnail_url],
+  )
+
+  const redditVideoUrl = React.useMemo(() => {
+    const html = selectedArticle?.content_html || ''
+    const match = /href=["'](https:\/\/(?:www\.)?reddit\.com\/link\/[^/]+\/video\/[^/]+\/player(?:[?#][^"']*)?)["']/i.exec(html)
+    return match?.[1]?.replace(/&amp;/g, '&') || null
+  }, [selectedArticle?.content_html])
+
+  useEffect(() => {
+    const root = contentRef.current
+    if (!root) return
+    const images = Array.from(root.querySelectorAll<HTMLImageElement>('img[data-fallback-src]'))
+    const cleanups = images.map(image => {
+      const onError = () => {
+        const fallback = image.dataset.fallbackSrc
+        image.removeAttribute('data-fallback-src')
+        if (fallback) image.src = fallback
+      }
+      image.addEventListener('error', onError, { once: true })
+      return () => image.removeEventListener('error', onError)
+    })
+    return () => cleanups.forEach(cleanup => cleanup())
+  }, [normalizedHtml, selectedArticle?.id])
 
   if (isLoadingArticle && !selectedArticle) {
     return <div className={styles.empty}><span className="spinner" role="status" aria-label="Loading article" style={{ width: '1.25rem', height: '1.25rem' }} /></div>
@@ -365,12 +621,11 @@ export function ArticleReader() {
               </div>
             ) : (
               <webview
-                // @ts-expect-error - Webview tag is valid in Electron react but dom bindings may lack it
                 ref={webviewRef}
                 className={styles.embeddedFrame}
                 src={embeddedUrl}
                 partition="persist:adblock"
-                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                useragent={cleanUserAgent}
                 style={{
                   flex: 1,
                   width: '100%',
@@ -465,7 +720,7 @@ export function ArticleReader() {
             {(() => {
               if (!selectedArticle) return null
 
-              let baseHtml = highlightedHtml || selectedArticle.content_html || ''
+               let baseHtml = normalizedHtml || selectedArticle.content_html || ''
               baseHtml = baseHtml.replace(/<div class="youtube-thumbnail-wrapper"[\s\S]*?<\/div>\s*<\/a>\s*<\/div>/g, '')
 
               if (activeYtVideos.length > 0) {
@@ -583,6 +838,12 @@ export function ArticleReader() {
                   />
                 )}
 
+                <RedditVideoNode
+                  video={redditVideo}
+                  fallbackPoster={selectedArticle.thumbnail_url}
+                  postUrl={selectedArticle.url}
+                  playerUrl={redditVideoUrl}
+                />
                 <ArticleContentNode htmlToRender={htmlToRender} />
 
                 <RetroPlayerNode 
@@ -658,6 +919,16 @@ export function ArticleReader() {
             </button>
           </div>
         </>
+      )}
+
+      {redditJsonUrl && (
+        <webview
+          ref={hiddenWebviewRef}
+          src={redditJsonUrl}
+          partition="persist:adblock"
+          useragent={cleanUserAgent}
+          style={{ width: 1, height: 1, position: 'absolute', left: '-9999px', visibility: 'hidden' }}
+        />
       )}
     </div>
   )

@@ -148,23 +148,22 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     const toFetch = ids.filter(id => !prefetchedContent.has(id))
     if (toFetch.length === 0) return
 
-    for (const id of toFetch) {
-      // Don't overwhelm the IPC bridge; fetch sequentially but quickly
-      const article = await window.api.articles.get(id)
-      if (article) {
-        set(s => {
-          const newMap = new Map(s.prefetchedContent)
-          newMap.set(id, article)
-          
-          // LRU-ish eviction: keep most recent 50
-          if (newMap.size > 50) {
-            const firstKey = newMap.keys().next().value
-            if (firstKey !== undefined) newMap.delete(firstKey)
-          }
-          
-          return { prefetchedContent: newMap }
+    // Keep a small concurrency window so scrolling does not serialize IPC calls.
+    for (let i = 0; i < toFetch.length; i += 4) {
+      const batch = toFetch.slice(i, i + 4)
+      const articles = await Promise.all(batch.map(id => window.api.articles.get(id).catch(() => null)))
+      set(s => {
+        const newMap = new Map(s.prefetchedContent)
+        articles.forEach((article, index) => {
+          if (article) newMap.set(batch[index], article)
         })
-      }
+        while (newMap.size > 50) {
+          const firstKey = newMap.keys().next().value
+          if (firstKey === undefined) break
+          newMap.delete(firstKey)
+        }
+        return { prefetchedContent: newMap }
+      })
     }
   },
 
@@ -197,12 +196,17 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     void window.api.articles.mark(id, 'read', true)
 
     // 4. Fetch full content
-    const article = await window.api.articles.get(id)
+    let article: Article | null = null
+    try {
+      article = await window.api.articles.get(id)
+    } catch {
+      article = null
+    }
     
     // 5. Ensure we don't overwrite if the user switched articles during the fetch
     const current = get().selectedArticle
     if (current && current.id === id) {
-      set({ selectedArticle: article, isLoadingArticle: false })
+      set({ selectedArticle: article ?? current, isLoadingArticle: false })
     } else {
       set({ isLoadingArticle: false })
     }

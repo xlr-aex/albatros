@@ -10,7 +10,8 @@ import { useArticleStore } from './articleStore'
 
 interface SyncStatus {
   feedId: number
-  status: 'syncing' | 'success' | 'not_modified' | 'error'
+  status: 'syncing' | 'success' | 'not_modified' | 'deferred' | 'error'
+  scope?: 'feed' | 'batch'
   articlesNew?: number
   error?: string
 }
@@ -21,6 +22,8 @@ interface UiStore {
   isSearchOpen:     boolean
   isSidebarOpen:    boolean
   syncingFeedIds:   Set<number>
+  isSyncing:        boolean
+  syncCompletionSequence: number
   lastSyncStatuses: SyncStatus[]
 
   setTheme:       (theme: Theme) => void
@@ -40,6 +43,8 @@ export const useUiStore = create<UiStore>((set, _get) => ({
   isSearchOpen:     false,
   isSidebarOpen:    true,
   syncingFeedIds:   new Set(),
+  isSyncing:        false,
+  syncCompletionSequence: 0,
   lastSyncStatuses: [],
 
   setTheme: (theme) => {
@@ -54,12 +59,32 @@ export const useUiStore = create<UiStore>((set, _get) => ({
   toggleSidebar:  ()    => set(s => ({ isSidebarOpen: !s.isSidebarOpen })),
 
   applySyncUpdate: (status) => {
+    if (status.scope === 'batch') {
+      set(s => {
+        const isSyncing = status.status === 'syncing'
+        return {
+          isSyncing,
+          syncCompletionSequence: !isSyncing && s.isSyncing
+            ? s.syncCompletionSequence + 1
+            : s.syncCompletionSequence,
+          lastSyncStatuses: [status, ...s.lastSyncStatuses].slice(0, 50),
+        }
+      })
+      return
+    }
     set(s => {
       const ids = new Set(s.syncingFeedIds)
       if (status.status === 'syncing') {
         ids.add(status.feedId)
       } else {
         ids.delete(status.feedId)
+        if (status.status !== 'error') {
+          useFeedStore.setState(s => ({
+            feeds: s.feeds.map(feed =>
+              feed.id === status.feedId ? { ...feed, error_count: 0 } : feed,
+            ),
+          }))
+        }
         
         // Debounce: coalesce rapid sync completions into a single reload.
         // During a batch sync of 50 feeds, this prevents 50 individual reloads.

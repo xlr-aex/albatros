@@ -20,7 +20,7 @@
  *  └─────────────────────────┘
  */
 
-import React, { useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useFeedStore, type Feed, type FeedGroup, type SystemView } from '../../store/feedStore'
 import { useArticleStore } from '../../store/articleStore'
 import { useUiStore } from '../../store/uiStore'
@@ -226,8 +226,9 @@ export function Sidebar() {
     loadFeeds,
     deleteGroup,
   } = useFeedStore()
-  const { loadArticles } = useArticleStore()
-  const { syncingFeedIds } = useUiStore()
+  const { loadArticles, articles } = useArticleStore()
+  const { syncingFeedIds, isSyncing, syncCompletionSequence } = useUiStore()
+  const [showSyncComplete, setShowSyncComplete] = useState(false)
   const [addFeedOpen, setAddFeedOpen] = useState(false)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -236,6 +237,13 @@ export function Sidebar() {
   const rootDragCounter = useRef(0)
 
   const [feedPropertiesOpen, setFeedPropertiesOpen] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (syncCompletionSequence === 0) return
+    setShowSyncComplete(true)
+    const timer = window.setTimeout(() => setShowSyncComplete(false), 1_800)
+    return () => window.clearTimeout(timer)
+  }, [syncCompletionSequence])
   const [ctxMenu, setCtxMenu] = useState<{ feedId: number; x: number; y: number } | null>(null)
   const [groupCtxMenu, setGroupCtxMenu] = useState<{
     groupId: number
@@ -363,12 +371,13 @@ export function Sidebar() {
         </div>
         <div className={styles.actions}>
           <button
-            title="Sync All Feeds"
-            aria-label="Sync All Feeds"
+            title={isSyncing ? 'Sync in progress…' : 'Sync All Feeds'}
+            aria-label={isSyncing ? 'Sync in progress' : 'Sync All Feeds'}
+            aria-busy={isSyncing}
             onClick={() => void window.api.sync.refreshAll()}
             className={`${styles.actionBtn} no-drag`}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={syncingFeedIds.size > 0 ? styles.syncSpin : ''}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isSyncing ? styles.syncSpin : showSyncComplete ? styles.syncComplete : ''}>
               <path d="M23 4v6h-6" />
               <path d="M1 20v-6h6" />
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -731,6 +740,7 @@ export function Sidebar() {
                 feed={feed}
                 isSelected={selection.type === 'feed' && selection.feedId === feed.id}
                 isSyncing={syncingFeedIds.has(feed.id)}
+                articleCountOverride={selection.type === 'feed' && selection.feedId === feed.id ? articles.length : undefined}
                 onClick={() => selectFeed(feed.id)}
                 onContextMenu={e => handleFeedContextMenu(e, feed.id)}
               />
@@ -746,6 +756,7 @@ export function Sidebar() {
               selectedFeedId={selection.type === 'feed' ? selection.feedId : undefined}
               isGroupSelected={selection.type === 'group' && selection.groupId === group.id}
               syncingFeedIds={syncingFeedIds}
+              selectedFeedArticleCount={articles.length}
               onSelectFeed={selectFeed}
               onSelectGroup={selectGroup}
               onToggleGroup={() => void toggleGroup(group.id)}
@@ -870,6 +881,7 @@ function FeedGroupComponent({
   selectedFeedId,
   isGroupSelected,
   syncingFeedIds,
+  selectedFeedArticleCount,
   onSelectFeed,
   onSelectGroup,
   onToggleGroup,
@@ -883,6 +895,7 @@ function FeedGroupComponent({
   selectedFeedId?: number
   isGroupSelected?: boolean
   syncingFeedIds: Set<number>
+  selectedFeedArticleCount: number
   onSelectFeed: (id: number) => void
   onSelectGroup: (id: number) => void
   onToggleGroup: () => void
@@ -892,6 +905,7 @@ function FeedGroupComponent({
   onEmojiClick: (e: React.MouseEvent, groupId: number) => void
 }) {
   const groupUnread = feeds.reduce((s, f) => s + f.unread_count, 0)
+  const groupArticles = feeds.reduce((s, f) => s + (f.article_count ?? 0), 0)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(group.name)
@@ -999,6 +1013,11 @@ function FeedGroupComponent({
           </span>
         )}
         {!isRenaming && groupUnread > 0 && <span className={styles.badge}>{groupUnread}</span>}
+        {!isRenaming && groupUnread === 0 && groupArticles > 0 && (
+          <span className={`${styles.badge} ${styles.readBadge}`} title={`${groupArticles} saved posts`}>
+            {groupArticles}
+          </span>
+        )}
       </button>
 
       {group.is_expanded && (
@@ -1009,6 +1028,7 @@ function FeedGroupComponent({
               feed={feed}
               isSelected={selectedFeedId === feed.id}
               isSyncing={syncingFeedIds.has(feed.id)}
+              articleCountOverride={selectedFeedId === feed.id ? selectedFeedArticleCount : undefined}
               onClick={() => onSelectFeed(feed.id)}
               onContextMenu={e => onContextMenuFeed(e, feed.id)}
             />
@@ -1025,15 +1045,18 @@ function FeedItem({
   feed,
   isSelected,
   isSyncing,
+  articleCountOverride,
   onClick,
   onContextMenu,
 }: {
   feed: Feed
   isSelected: boolean
   isSyncing: boolean
+  articleCountOverride?: number
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
+  const articleCount = Math.max(feed.article_count ?? 0, articleCountOverride ?? 0)
   return (
     <div
       role="button"
@@ -1045,7 +1068,7 @@ function FeedItem({
       }}
       onContextMenu={onContextMenu}
       title={feed.title ?? feed.url}
-      aria-label={`${feed.title ?? feed.url}${feed.unread_count > 0 ? `, ${feed.unread_count} unread` : ''}${isSyncing ? ', syncing' : ''}`}
+      aria-label={`${feed.title ?? feed.url}${feed.unread_count > 0 ? `, ${feed.unread_count} unread` : articleCount > 0 ? `, ${articleCount} posts` : ', no posts'}${isSyncing ? ', syncing' : ''}`}
       aria-current={isSelected ? 'true' : undefined}
       draggable
       onDragStart={e => {
@@ -1095,6 +1118,11 @@ function FeedItem({
       )}
       {!isSyncing && feed.unread_count > 0 && (
         <span className={styles.badge}>{feed.unread_count}</span>
+      )}
+      {!isSyncing && feed.unread_count === 0 && articleCount > 0 && (
+        <span className={`${styles.badge} ${styles.readBadge}`} title={`${articleCount} existing posts`}>
+          {articleCount}
+        </span>
       )}
     </div>
   )

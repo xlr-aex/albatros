@@ -146,6 +146,15 @@
   border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
+/* Total posts shown only when a feed has no unread items, so it never looks empty. */
+.readBadge {
+  background: rgba(148, 163, 184, 0.07);
+  color: var(--text-muted);
+  border-color: rgba(148, 163, 184, 0.16);
+  font-weight: var(--weight-medium);
+  opacity: 0.78;
+}
+
 /* ── Feed Group ──────────────────────────────────────────────────────────────── */
 .group {
   display: flex;
@@ -361,7 +370,7 @@
 .syncDot {
   font-size: 0.75rem;
   color: var(--brand-400);
-  animation: spin 1s linear infinite;
+  animation: syncRotate 1s linear infinite;
 }
 
 .errorIcon {
@@ -380,8 +389,32 @@
 }
 
 .syncSpin {
-  animation: spin 1s linear infinite;
+  animation: syncRotate 0.8s linear infinite;
   transform-origin: center;
+  transform-box: fill-box;
+}
+
+.syncComplete {
+  animation: syncSuccessFlash 0.55s ease-in-out 3;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes syncRotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes syncSuccessFlash {
+  0%, 100% {
+    color: inherit;
+    filter: none;
+    transform: scale(1);
+  }
+  50% {
+    color: #22c55e;
+    filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.9));
+    transform: scale(1.25);
+  }
 }
 
 /* Footer */

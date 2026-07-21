@@ -16,9 +16,9 @@
  */
 
 import { BrowserWindow } from 'electron'
-import type { Database } from 'sql.js'
+import type { Database } from 'better-sqlite3'
 import pLimit from 'p-limit'
-import { fetchFeed } from './HttpClient'
+import { FeedHttpError, fetchFeed, type FetchFeedResult } from './HttpClient'
 import { parseFeed } from './FeedParser'
 import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
@@ -57,7 +57,7 @@ export interface SyncResult {
   feedId: number
   articlesNew: number
   articlesUpdated: number
-  status: 'success' | 'not_modified' | 'error'
+  status: 'success' | 'not_modified' | 'deferred' | 'error'
   error?: string
 }
 
@@ -65,7 +65,12 @@ export interface SyncResult {
 
 export class SyncEngine {
   private readonly limiter = pLimit(MAX_CONCURRENT)
+  private readonly hostLimiters = new Map<string, ReturnType<typeof pLimit>>()
+  private nextRedditRequestAt = 0
+  private redditBlockedUntil = 0
+  private activeSyncOperations = 0
   private readonly db: Database
+  public onSyncComplete?: () => void
 
   constructor(
     private readonly feedService: FeedService,
@@ -87,11 +92,56 @@ export class SyncEngine {
     const toSync = feeds ?? this.feedService.getDueForSync()
     if (toSync.length === 0) return []
 
-    const tasks = toSync.map(feed => this.limiter(() => this.syncOne(feed, true)))
-    const results = await Promise.all(tasks)
-    persistDatabase() // Persist once after the entire batch
-    return results
+    this.beginSyncOperation()
+    try {
+      const redditFeeds = toSync
+        .filter(feed => this.isRedditUrl(feed.url))
+        .sort((a, b) => {
+          const emptyFirst = Number(a.article_count > 0) - Number(b.article_count > 0)
+          return emptyFirst || (a.last_fetched_at ?? 0) - (b.last_fetched_at ?? 0)
+        })
+      const nonReddit = toSync.filter(feed => !this.isRedditUrl(feed.url))
+      const regularTasks = nonReddit.map(feed =>
+        this.hostLimiter(feed.url)(() => this.limiter(() => this.syncOne(feed, true))),
+      )
+      // Keep Reddit strictly serial, including manual per-feed refreshes. The
+      // Chromium session can sustain this queue without the 429 storm caused by
+      // dozens of anonymous Node requests. Empty feeds are filled first.
+      const redditTask = (async (): Promise<SyncResult[]> => {
+        const results: SyncResult[] = []
+        for (const feed of redditFeeds) {
+          results.push(await this.hostLimiter(feed.url)(
+            () => this.limiter(() => this.syncOne(feed, true)),
+          ))
+        }
+        return results
+      })()
+
+      const [regularResults, redditResults] = await Promise.all([
+        Promise.all(regularTasks),
+        redditTask,
+      ])
+      const results = [...regularResults, ...redditResults]
+      persistDatabase() // Persist once after the entire batch
+      this.onSyncComplete?.()
+      return results
+    } finally {
+      this.endSyncOperation()
+    }
   }
+
+  private hostLimiter(feedUrl: string): ReturnType<typeof pLimit> {
+    let host = 'unknown'
+    try { host = new URL(feedUrl).hostname.toLowerCase() } catch { /* validated later by fetchFeed */ }
+    if (host.endsWith('reddit.com')) host = 'reddit.com'
+    const existing = this.hostLimiters.get(host)
+    if (existing) return existing
+    // Providers such as Reddit rate-limit aggressively; serialize that host.
+    const limiter = pLimit(host.endsWith('reddit.com') ? 1 : 2)
+    this.hostLimiters.set(host, limiter)
+    return limiter
+  }
+
 
   /**
    * Syncs a single feed by ID.  Useful for "refresh now" triggered from the UI.
@@ -106,7 +156,14 @@ export class SyncEngine {
         status: 'error',
         error: 'Feed not found',
       }
-    return this.syncOne(feed)
+    this.beginSyncOperation()
+    try {
+      const res = await this.hostLimiter(feed.url)(() => this.limiter(() => this.syncOne(feed)))
+      this.onSyncComplete?.()
+      return res
+    } finally {
+      this.endSyncOperation()
+    }
   }
 
   // ── Core sync logic ───────────────────────────────────────────────────────
@@ -119,6 +176,10 @@ export class SyncEngine {
     const RETRY_DELAY_MS = 2000
     let lastError: Error | null = null
 
+    if (this.isRedditUrl(feed.url) && Date.now() < this.redditBlockedUntil) {
+      return this.deferRateLimitedFeed(feed, logId, skipPersist)
+    }
+
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         if (attempt > 1) {
@@ -129,11 +190,28 @@ export class SyncEngine {
         // On the final attempt, we force a full reload by ignoring ETag and Last-Modified.
         // This resolves cases where buggy servers return empty 200/304 incorrectly.
         const useCache = attempt < MAX_ATTEMPTS
-        const response = await fetchFeed(
-          feed.url, 
-          useCache ? feed.last_etag : null, 
-          useCache ? feed.last_modified : null
-        )
+        await this.waitForProvider(feed.url)
+        let effectiveUrl = feed.url
+        let response: FetchFeedResult
+        try {
+          response = await fetchFeed(
+            effectiveUrl,
+            useCache ? feed.last_etag : null,
+            useCache ? feed.last_modified : null,
+          )
+        } catch (err) {
+          if (!(err instanceof FeedHttpError) || err.status !== 404) throw err
+
+          const recovered = await this.tryFeedAlternatives(feed.url)
+          if (!recovered) throw err
+          effectiveUrl = recovered.url
+          response = recovered.response
+
+          const existing = this.feedService.getByUrl(effectiveUrl)
+          if (!existing || existing.id === feed.id) {
+            this.feedService.update(feed.id, { url: effectiveUrl }, skipPersist)
+          }
+        }
 
         // ── 304 Not Modified ───────────────────────────────────────────────
         if (response.status === 304) {
@@ -195,7 +273,7 @@ export class SyncEngine {
         }
 
         // Update feed metadata from parsed feed info
-        const faviconUrl = getFaviconUrl(parsed.meta.site_url, feed.url)
+        const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl)
         if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
           this.feedService.update(
             feed.id,
@@ -209,10 +287,9 @@ export class SyncEngine {
         }
 
         // ── Upsert articles ────────────────────────────────────────────────
-        let articlesNew = 0
-        for (const article of parsed.articles) {
-          if (!article.guid) continue
-          const { isNew } = this.articleService.upsert({
+        const inputs = parsed.articles
+          .filter(article => Boolean(article.guid))
+          .map(article => ({
             feed_id: feed.id,
             guid: article.guid,
             url: article.url ?? undefined,
@@ -226,9 +303,8 @@ export class SyncEngine {
             word_count: article.word_count ?? undefined,
             published_at: article.published_at ?? undefined,
             thumbnail_url: article.thumbnail_url ?? undefined,
-          })
-          if (isNew) articlesNew++
-        }
+          }))
+        const { articlesNew, articlesUpdated } = this.articleService.upsertMany(inputs)
 
         if (!skipPersist) persistDatabase()
 
@@ -245,12 +321,22 @@ export class SyncEngine {
           skipPersist,
         )
 
-        this.finishSyncLog(logId, articlesNew, 0, 'success', undefined, skipPersist)
+        this.finishSyncLog(logId, articlesNew, articlesUpdated, 'success', undefined, skipPersist)
         this.emitStatus({ feedId: feed.id, status: 'success', articlesNew })
-        return { feedId: feed.id, articlesNew, articlesUpdated: 0, status: 'success' }
+        return { feedId: feed.id, articlesNew, articlesUpdated, status: 'success' }
 
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err))
+        if (err instanceof FeedHttpError && err.status === 429) {
+          const retryAfterMs = Math.min(
+            Math.max(err.retryAfterMs ?? 60_000, 60_000),
+            15 * 60_000,
+          )
+          if (this.isRedditUrl(feed.url)) {
+            this.redditBlockedUntil = Math.max(this.redditBlockedUntil, Date.now() + retryAfterMs)
+          }
+          return this.deferRateLimitedFeed(feed, logId, skipPersist, retryAfterMs)
+        }
         // Network/HTTP error: retry up to MAX_ATTEMPTS
         if (attempt < MAX_ATTEMPTS) {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
@@ -294,6 +380,59 @@ export class SyncEngine {
     }
   }
 
+  private isRedditUrl(url: string): boolean {
+    try { return new URL(url).hostname.toLowerCase().endsWith('reddit.com') } catch { return false }
+  }
+
+  private async waitForProvider(url: string): Promise<void> {
+    if (!this.isRedditUrl(url)) return
+    const waitMs = Math.max(0, this.nextRedditRequestAt - Date.now())
+    if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs))
+    // The persistent Chromium session is accepted by Reddit, but spacing starts
+    // avoids turning a full-library refresh into a burst.
+    this.nextRedditRequestAt = Date.now() + 750
+  }
+
+  private deferRateLimitedFeed(
+    feed: Feed,
+    logId: number,
+    skipPersist: boolean,
+    retryAfterMs = Math.max(60_000, this.redditBlockedUntil - Date.now()),
+  ): SyncResult {
+    const nextFetchAt = Math.floor((Date.now() + retryAfterMs) / 1000)
+    this.feedService.deferAfterRateLimit(feed.id, nextFetchAt)
+    this.finishSyncLog(logId, 0, 0, 'deferred', 'Provider rate limit; retry scheduled', skipPersist)
+    this.emitStatus({ feedId: feed.id, status: 'deferred' })
+    return { feedId: feed.id, articlesNew: 0, articlesUpdated: 0, status: 'deferred' }
+  }
+
+  private async tryFeedAlternatives(feedUrl: string): Promise<{ url: string; response: FetchFeedResult } | null> {
+    let parsed: URL
+    try { parsed = new URL(feedUrl) } catch { return null }
+
+    const paths = new Set<string>()
+    const cleanPath = parsed.pathname.replace(/\/+$/, '')
+    if (/\/(?:rss|feed)$/i.test(cleanPath)) {
+      paths.add(`${cleanPath.replace(/\/(?:rss|feed)$/i, '')}/feed/`)
+    }
+    const wordpressTag = cleanPath.match(/^\/tag\/([^/]+)\/(?:rss|feed)$/i)
+    if (wordpressTag) paths.add(`/category/${wordpressTag[1]}/feed/`)
+    paths.add('/feed/')
+
+    for (const pathname of paths) {
+      const candidate = new URL(parsed.toString())
+      candidate.pathname = pathname
+      candidate.search = ''
+      candidate.hash = ''
+      if (candidate.toString() === feedUrl) continue
+      try {
+        const response = await fetchFeed(candidate.toString())
+        if (response.status === 200) return { url: candidate.toString(), response }
+      } catch { /* try the next conventional endpoint */ }
+    }
+    return null
+  }
+
   // ── Adaptive interval ─────────────────────────────────────────────────────
 
   /**
@@ -329,11 +468,11 @@ export class SyncEngine {
 
   private insertSyncLog(_feedId: number, skipPersist = false): number {
     try {
-      this.db.run(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`, [_feedId])
-      const res = this.db.exec('SELECT last_insert_rowid()')
+      const info = this.db.prepare(`INSERT INTO sync_log (feed_id, status) VALUES (?, 'running')`).run(_feedId)
       if (!skipPersist) persistDatabase()
-      return Number(res[0].values[0][0])
-    } catch {
+      return Number(info.lastInsertRowid)
+    } catch (err) {
+      console.error('[SyncEngine] insertSyncLog error:', err)
       return 0
     }
   }
@@ -348,17 +487,30 @@ export class SyncEngine {
   ): void {
     if (_logId === 0) return
     try {
-      this.db.run(
-        `UPDATE sync_log SET finished_at = strftime('%s','now'), articles_new = ?, articles_updated = ?, status = ?, error_message = ? WHERE id = ?`,
-        [_articlesNew, _articlesUpdated, _status, _error ?? null, _logId],
-      )
+      this.db.prepare(
+        `UPDATE sync_log SET finished_at = strftime('%s','now'), articles_new = ?, articles_updated = ?, status = ?, error_message = ? WHERE id = ?`
+      ).run(_articlesNew, _articlesUpdated, _status, _error ?? null, _logId)
       if (!skipPersist) persistDatabase()
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error('[SyncEngine] finishSyncLog error:', err)
     }
   }
 
   // ── IPC emission ──────────────────────────────────────────────────────────
+
+  private beginSyncOperation(): void {
+    this.activeSyncOperations++
+    if (this.activeSyncOperations === 1) {
+      this.emitStatus({ feedId: 0, status: 'syncing', scope: 'batch' })
+    }
+  }
+
+  private endSyncOperation(): void {
+    this.activeSyncOperations = Math.max(0, this.activeSyncOperations - 1)
+    if (this.activeSyncOperations === 0) {
+      this.emitStatus({ feedId: 0, status: 'success', scope: 'batch' })
+    }
+  }
 
   /**
    * Broadcasts a sync status update to all renderer windows via IPC.
@@ -366,7 +518,8 @@ export class SyncEngine {
    */
   private emitStatus(payload: {
     feedId: number
-    status: 'syncing' | 'success' | 'not_modified' | 'error'
+    status: 'syncing' | 'success' | 'not_modified' | 'deferred' | 'error'
+    scope?: 'feed' | 'batch'
     articlesNew?: number
     error?: string
   }): void {

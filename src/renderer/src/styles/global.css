@@ -194,11 +194,74 @@ a:hover { text-decoration: underline; }
 .article-body p      { margin-bottom: 1em; }
 .article-body img    {
   max-width: 100%;
+  width: auto;
   height: auto;
   display: block;
   margin: 1em auto;
   border-radius: var(--radius-md);
   object-fit: contain;
+}
+
+.reddit-video-container {
+  width: 100%;
+  margin: 1.5em auto;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.reddit-video-element {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.reddit-video-fallback {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: min(56vw, 480px);
+  margin: 1.5em auto;
+  padding: 1rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: #fff;
+  background-color: #101116;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  cursor: pointer;
+}
+
+.reddit-video-fallback::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.reddit-video-fallback > * {
+  position: relative;
+}
+
+.reddit-video-play {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  padding-left: 0.2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 69, 0, 0.92);
+  font-size: 1.35rem;
 }
 
 /* Force Reddit preview thumbnails to upscale and center cleanly */

@@ -28,6 +28,7 @@ export interface Feed {
   site_url: string | null
   favicon_url: string | null
   unread_count: number
+  article_count: number
   error_count: number
   is_active: boolean
   fetch_interval_sec: number

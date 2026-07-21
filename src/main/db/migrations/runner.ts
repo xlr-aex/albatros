@@ -14,7 +14,6 @@
  */
 
 import type { Database } from 'better-sqlite3'
-import { persistDatabase } from '../connection'
 
 // ─── Migration scripts ───────────────────────────────────────────────────────
 
@@ -61,6 +60,20 @@ const MIGRATIONS: Migration[] = [
       BEGIN
         UPDATE feeds SET updated_at = strftime('%s','now') WHERE id = new.id;
       END;
+    `,
+  },
+  {
+    version: 5,
+    name: 'add_article_summary',
+    sql: `ALTER TABLE articles ADD COLUMN summary TEXT DEFAULT NULL;`,
+  },
+  {
+    version: 6,
+    name: 'add_article_query_indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_articles_pub_global_id ON articles (published_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_articles_unread_pub ON articles (is_read, published_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_articles_summary_pub ON articles (summary, published_at DESC, id DESC);
     `,
   },
 ]

@@ -106,6 +106,25 @@ async function* streamOllama(config: { baseUrl: string, model: string, systemPro
   }
 }
 
+async function getLlmCompletion(
+  cfg: { provider: string; baseUrl: string; model: string; systemPrompt: string },
+  messages: { role: string; content: string }[],
+  signal: AbortSignal
+): Promise<string> {
+  let streamFn
+  if (cfg.provider === 'ollama') {
+    streamFn = streamOllama(cfg, messages, signal)
+  } else {
+    streamFn = streamLmStudio(cfg, messages, signal)
+  }
+  let result = ''
+  for await (const chunk of streamFn) {
+    if (signal.aborted) break
+    result += chunk
+  }
+  return result
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
@@ -123,6 +142,8 @@ export function AiDigestView() {
   const [state, setState] = useState<'idle' | 'loading' | 'streaming' | 'done'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [contextSources, setContextSources] = useState<{id: number, url: string, title: string}[]>([])
+  const [loadingText, setLoadingText] = useState('')
+  const [summaryStatus, setSummaryStatus] = useState<{ pending: number; total: number; isProcessing: boolean } | null>(null)
   
   const abortControllerRef = useRef<AbortController | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -130,6 +151,15 @@ export function AiDigestView() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isAtBottomRef = useRef(true)                // tracks if user is near the bottom
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  // Listen for background summarizer status
+  useEffect(() => {
+    window.api.summary.getStatus().then(setSummaryStatus).catch(console.error)
+    const unsubscribe = window.api.summary.onStatus(setSummaryStatus)
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   // Smart auto-scroll: only scroll to bottom if user hasn't scrolled up
   useEffect(() => {
@@ -161,7 +191,7 @@ export function AiDigestView() {
   }, [])
 
   // Clear chat if knowledge base filters change
-  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, val: string) => {
+  const handleFilterChange = (setter: (val: any) => void, val: any) => {
     if (messages.length > 0) {
       if (!window.confirm("Changer les filtres effacera la conversation en cours. Continuer ?")) {
         return
@@ -191,6 +221,7 @@ export function AiDigestView() {
     setChatInput('')
     setErrorMsg('')
     setState('loading')
+    setLoadingText('Extraction de la connaissance...')
     
     // Focus back if needed (for button clicks)
     setTimeout(() => inputRef.current?.focus(), 50)
@@ -248,20 +279,22 @@ export function AiDigestView() {
           return dict
         })
 
-        const contextBlocks = articles.map((a: {id: number, url: string, title: string, content: string}) => `<source id="${a.id}">
-  <metadata>
-    Titre: ${a.title}
-    ID DE RÉFÉRENCE: ${a.id}
-  </metadata>
-  <content>${a.content}</content>
-</source>`).join('\n')
+        // ── Adaptive content budget: less articles = more detail, more = tighter ──
+        const n = articles.length
+        const charsPerArticle = n <= 15 ? 600 : n <= 40 ? 400 : n <= 100 ? 250 : 150
 
-        let instructionSet = `Tu es un assistant analytique expert. Tu effectues un "Scan Profond" parmi les 10 000 derniers articles de la base pour répondre précisément.
+        // Build source XML helper
+        const buildSourceXml = (a: {id: number, title: string, content: string}) => {
+          const clean = a.content.replace(/\s{2,}/g, ' ').trim().substring(0, charsPerArticle)
+          return `<source id="${a.id}"><metadata>${a.title} [${a.id}]</metadata><content>${clean}</content></source>`
+        }
 
-=== RÈGLES DE CITATION OBLIGATOIRES ===
-1. Chaque fait mentionné DOIT être sourcé avec l'ID correspondant entre crochets (ex: [123]).
-2. Utilise UNIQUEMENT les informations fournies.
-3. Si la réponse nécessite de synthétiser un grand nombre d'ID, regroupe-les intelligemment.`
+        let contextText = articles.map((a: {id: number, url: string, title: string, content: string}) =>
+          buildSourceXml(a)).join('\n')
+
+        setLoadingText('Génération de la synthèse...')
+
+        let instructionSet = `Synthèse thématique structurée des sources. Cite chaque fait avec son [ID]. Regroupe par thème. N'omets rien d'important.`
 
         if (isGenericSummary && cfg.summaryPrompt) {
           instructionSet = cfg.summaryPrompt
@@ -269,16 +302,17 @@ export function AiDigestView() {
           instructionSet = cfg.newsPrompt
         }
 
+        // Cap context to avoid overflowing smaller context windows
+        const maxCtx = Math.min(contextText.length, 80_000)
+
         finalPayload.push({
           role: 'user',
           content: `${instructionSet}
 
-=== CONTEXTE FOURNI (Échantillon de connaissance parmi ${articles.length} articles scannés) ===
 <sources>
-${contextBlocks.substring(0, 150000)}
+${contextText.substring(0, maxCtx)}
 </sources>
 
-=== QUESTION DE L'UTILISATEUR ===
 ${contentToSend}`
         })
       } else {
@@ -399,8 +433,16 @@ ${contentToSend}`
               ))}
             </optgroup>
           </select>
+          {summaryStatus && summaryStatus.pending > 0 && (
+            <div className={styles.summaryStatus} style={{ marginLeft: 'auto' }} title={`${summaryStatus.pending} articles en attente de résumé par l'IA`}>
+              <span className={styles.pulseDot} />
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                IA: {summaryStatus.total - summaryStatus.pending}/{summaryStatus.total} résumés
+              </span>
+            </div>
+          )}
           {messages.length > 0 && (
-            <button onClick={() => setMessages([])} className={`${styles.button} ${styles.cleanBtn}`} style={{ marginLeft: 'auto' }} title="Vider la discussion">
+            <button onClick={() => setMessages([])} className={`${styles.button} ${styles.cleanBtn}`} style={{ marginLeft: summaryStatus && summaryStatus.pending > 0 ? '0' : 'auto' }} title="Vider la discussion">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           )}
@@ -453,7 +495,7 @@ ${contentToSend}`
                <div className={`${styles.bubble} ${styles.bubbleAssistant}`}>
                  <div className={styles.loading}>
                    <div className={styles.spinner} />
-                   Extraction de la connaissance et appel IA...
+                   {loadingText || "Extraction de la connaissance et appel IA..."}
                  </div>
                </div>
             </div>

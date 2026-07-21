@@ -28,6 +28,7 @@ export interface Feed {
   favicon_url: string | null
   language: string | null
   unread_count: number
+  article_count: number
   error_count: number
   last_etag: string | null
   last_modified: string | null
@@ -51,6 +52,7 @@ export interface CreateFeedInput {
 }
 
 export interface UpdateFeedInput {
+  url?: string
   title?: string
   site_url?: string
   group_id?: number | null
@@ -108,7 +110,13 @@ export class FeedService {
   /** Returns all active feeds including their unread_count. */
   getAll(): Feed[] {
     const stmt = this.db.prepare(`
-      SELECT * FROM feeds
+      SELECT feeds.*,
+        (
+          SELECT COUNT(*) FROM articles
+          WHERE articles.feed_id = feeds.id
+            AND (articles.enclosure_type IS NULL OR articles.enclosure_type != 'reddit-comment')
+        ) AS article_count
+      FROM feeds
       WHERE is_active = 1
       ORDER BY group_id NULLS LAST, title COLLATE NOCASE
     `)
@@ -116,6 +124,7 @@ export class FeedService {
     return rows.map(row => ({
       ...row,
       unread_count: Number(row.unread_count ?? 0),
+      article_count: Number(row.article_count ?? 0),
       is_active: row.is_active === 1
     })) as Feed[]
   }
@@ -128,6 +137,7 @@ export class FeedService {
     return {
       ...row,
       unread_count: Number(row.unread_count ?? 0),
+      article_count: Number(row.article_count ?? 0),
       is_active: row.is_active === 1
     } as Feed
   }
@@ -140,6 +150,7 @@ export class FeedService {
     return {
       ...row,
       unread_count: Number(row.unread_count ?? 0),
+      article_count: Number(row.article_count ?? 0),
       is_active: row.is_active === 1
     } as Feed
   }
@@ -181,6 +192,7 @@ export class FeedService {
     const sets: string[] = []
     const params: unknown[] = []
 
+    if (patch.url               !== undefined) { sets.push('url = ?');                params.push(patch.url) }
     if (patch.title             !== undefined) { sets.push('title = ?');              params.push(patch.title) }
     if (patch.site_url          !== undefined) { sets.push('site_url = ?');           params.push(patch.site_url) }
     if (patch.group_id          !== undefined) { sets.push('group_id = ?');           params.push(patch.group_id) }
@@ -191,6 +203,35 @@ export class FeedService {
     if (sets.length === 0) return
     params.push(id)
     this.db.prepare(`UPDATE feeds SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+  }
+
+  /** Reschedules a provider-throttled feed without treating it as broken. */
+  deferAfterRateLimit(id: number, nextFetchAt: number): void {
+    this.db.prepare(`
+      UPDATE feeds
+      SET next_fetch_at = ?, error_count = 0
+      WHERE id = ?
+    `).run(nextFetchAt, id)
+  }
+
+  /** Clears stale provider-throttling warnings while preserving genuine feed errors. */
+  clearTransientRateLimitErrors(): void {
+    this.db.prepare(`
+      UPDATE feeds
+      SET error_count = 0
+      WHERE error_count > 0
+        AND EXISTS (
+          SELECT 1
+          FROM sync_log
+          WHERE sync_log.feed_id = feeds.id
+            AND sync_log.id = (
+              SELECT id FROM sync_log latest
+              WHERE latest.feed_id = feeds.id
+              ORDER BY id DESC LIMIT 1
+            )
+            AND sync_log.error_message LIKE 'HTTP 429%'
+        )
+    `).run()
   }
 
   /**
@@ -227,11 +268,21 @@ export class FeedService {
   /** Returns feeds whose next_fetch_at is in the past (ready for sync). */
   getDueForSync(): Feed[] {
     const now = Math.floor(Date.now() / 1000)
-    const stmt = this.db.prepare('SELECT * FROM feeds WHERE is_active = 1 AND (next_fetch_at IS NULL OR next_fetch_at <= ?)')
+    const stmt = this.db.prepare(`
+      SELECT feeds.*,
+        (
+          SELECT COUNT(*) FROM articles
+          WHERE articles.feed_id = feeds.id
+            AND (articles.enclosure_type IS NULL OR articles.enclosure_type != 'reddit-comment')
+        ) AS article_count
+      FROM feeds
+      WHERE is_active = 1 AND (next_fetch_at IS NULL OR next_fetch_at <= ?)
+    `)
     const rows = stmt.all(now) as Record<string, unknown>[]
     return rows.map(row => ({
       ...row,
       unread_count: Number(row.unread_count ?? 0),
+      article_count: Number(row.article_count ?? 0),
       is_active: row.is_active === 1
     })) as Feed[]
   }

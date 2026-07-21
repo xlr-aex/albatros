@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS articles (
   is_read        INTEGER NOT NULL DEFAULT 0,
   is_starred     INTEGER NOT NULL DEFAULT 0,
   is_saved       INTEGER NOT NULL DEFAULT 0,
+  summary        TEXT DEFAULT NULL,
 
   created_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
 
@@ -115,6 +116,9 @@ CREATE INDEX IF NOT EXISTS idx_articles_starred     ON articles (is_starred, pub
 CREATE INDEX IF NOT EXISTS idx_articles_saved       ON articles (is_saved,   published_at DESC)
   WHERE is_saved = 1;
 CREATE INDEX IF NOT EXISTS idx_articles_pub_global  ON articles (published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_pub_global_id ON articles (published_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_unread_pub ON articles (is_read, published_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_summary_pub ON articles (summary, published_at DESC, id DESC);
 
 -- ─── Full-Text Search (FTS4) ──────────────────────────────────────────────────
 -- Virtual table that indexes title, content_text, and author.

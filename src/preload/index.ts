@@ -63,7 +63,8 @@ const api = {
      */
     onUpdate: (cb: (payload: {
       feedId: number
-      status: 'syncing' | 'success' | 'not_modified' | 'error'
+      status: 'syncing' | 'success' | 'not_modified' | 'deferred' | 'error'
+      scope?: 'feed' | 'batch'
       articlesNew?: number
       error?: string
     }) => void) => {
@@ -85,6 +86,20 @@ const api = {
     import: ()                                              => ipcRenderer.invoke('opml:import'),
     export: ()                                              => ipcRenderer.invoke('opml:export'),
   },
+
+  // ── Summary ──────────────────────────────────────────────────────────────
+  summary: {
+    getStatus: () => ipcRenderer.invoke('summary:status-get'),
+    trigger: () => ipcRenderer.invoke('summary:trigger'),
+    onStatus: (cb: (payload: { pending: number; total: number; isProcessing: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on('summary:status', handler)
+      return () => ipcRenderer.off('summary:status', handler)
+    }
+  },
+  debug: {
+    log: (msg: string) => ipcRenderer.send('debug:log', msg)
+  }
 }
 
 // Expose the API to the renderer under window.api

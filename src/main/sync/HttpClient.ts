@@ -12,6 +12,7 @@
  */
 
 
+import { session } from 'electron'
 import { URL } from 'url'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +28,17 @@ export interface FetchFeedResult {
   lastModified: string | null
   /** Content-Type header (used for format detection) */
   contentType: string | null
+}
+
+export class FeedHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly url: string,
+    public readonly retryAfterMs: number | null = null,
+  ) {
+    super(`HTTP ${status} fetching ${url}`)
+    this.name = 'FeedHttpError'
+  }
 }
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
@@ -98,6 +110,7 @@ export async function fetchFeed(
   }
 
   // ── Build request headers ───────────────────────────────────────────────
+  const isReddit = parsed.hostname.toLowerCase().endsWith('reddit.com')
   const headers: Record<string, string> = {
     'User-Agent': USER_AGENT,
     'Accept': 'application/rss+xml, application/atom+xml, application/json, application/xml, text/xml, */*;q=0.8',
@@ -111,22 +124,27 @@ export async function fetchFeed(
 
   let response: Response
   try {
-    response = await fetch(url, {
+    const options: RequestInit = {
       method:  'GET',
       headers,
       signal:  controller.signal,
       redirect: 'follow',
-    })
+    }
+    // Reddit heavily throttles anonymous Node requests. Reuse the persistent
+    // Chromium session used by the embedded browser (cookies + browser network
+    // stack), which is both faster and accepted by Reddit's RSS endpoint.
+    response = isReddit && session?.fromPartition
+      ? await session.fromPartition('persist:adblock').fetch(url, options)
+      : await fetch(url, options)
   } catch (err) {
     clearTimeout(timeout)
     throw new Error(`Fetch failed for ${url}: ${err instanceof Error ? err.message : String(err)}`)
   }
-  clearTimeout(timeout)
-
   const statusCode = response.status
 
   // ── 304 Not Modified — no body to read ─────────────────────────────────
   if (statusCode === 304) {
+    clearTimeout(timeout)
     return {
       status:      304,
       body:        '',
@@ -138,17 +156,24 @@ export async function fetchFeed(
 
   // ── Non-200 responses ───────────────────────────────────────────────────
   if (!response.ok) {
-    throw new Error(`HTTP ${statusCode} fetching ${url}`)
+    clearTimeout(timeout)
+    throw new FeedHttpError(statusCode, url, parseRetryAfter(response.headers.get('retry-after')))
   }
 
   // ── Read body with size cap ─────────────────────────────────────────────
   // Pre-check Content-Length to avoid downloading excessively large feeds into memory.
   const contentLength = response.headers.get('content-length')
   if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    clearTimeout(timeout)
     throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes, Content-Length: ${contentLength}): ${url}`)
   }
 
-  const bodyText = await response.text()
+  let bodyText: string
+  try {
+    bodyText = await response.text()
+  } finally {
+    clearTimeout(timeout)
+  }
   if (Buffer.byteLength(bodyText, 'utf8') > MAX_BODY_BYTES) {
     throw new Error(`Feed body exceeds size limit (${MAX_BODY_BYTES} bytes): ${url}`)
   }
@@ -168,4 +193,12 @@ export async function fetchFeed(
 function extractHeader(value: string | string[] | null | undefined): string | null {
   if (value === undefined || value === null) return null
   return Array.isArray(value) ? value[0] : value
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) return null
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const date = Date.parse(value)
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now())
 }

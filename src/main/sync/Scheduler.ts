@@ -10,7 +10,7 @@
  *  - Rebuilds the FTS5 index after mass deletions
  */
 
-import type { Database } from 'sql.js'
+import type { Database } from 'better-sqlite3'
 import type { SyncEngine } from './SyncEngine'
 import type { ArticleService } from '../services/ArticleService'
 import type { FeedService } from '../services/FeedService'
@@ -30,6 +30,7 @@ export class Scheduler {
   private tickTimer:        ReturnType<typeof setInterval> | null = null
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null
   private isRunning = false
+  private tickInFlight: Promise<void> | null = null
 
   constructor(
     private readonly db:             Database,
@@ -108,13 +109,20 @@ export class Scheduler {
    * @param forceAll - If true, syncs ALL active feeds regardless of schedule
    */
   private async tick(forceAll = false): Promise<void> {
+    if (this.tickInFlight) return this.tickInFlight
+
+    this.tickInFlight = this.runTick(forceAll)
     try {
-      const feeds = forceAll
-        ? this.feedService.getAll()
-        : this.feedService.getDueForSync()
+      await this.tickInFlight
+    } finally {
+      this.tickInFlight = null
+    }
+  }
 
+  private async runTick(forceAll: boolean): Promise<void> {
+    try {
+      const feeds = forceAll ? this.feedService.getAll() : this.feedService.getDueForSync()
       if (feeds.length === 0) return
-
       console.warn(`[Scheduler] tick: syncing ${feeds.length} feed(s)`)
       await this.syncEngine.syncMany(feeds)
     } catch (err) {
