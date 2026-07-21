@@ -182,3 +182,30 @@ Replaces the `⟳` spinning character everywhere. Apply the global `.spinner` cl
   animation: spin-border 0.7s linear infinite;
 }
 ```
+
+---
+
+## Synchronisation feedback
+
+The toolbar Sync action reflects the batch lifecycle rather than the status of whichever feed happened to finish last:
+
+- continuous rotation while a batch event reports `syncing`;
+- disabled/re-entry-safe behaviour while the scheduler operation is active;
+- exactly three green flashes after the last active operation completes;
+- per-feed errors/deferred states remain separate from the global completion animation.
+
+This distinction is important for Reddit, where a serial queue can continue after ordinary feeds have already finished.
+
+## Empty, cached and error states
+
+Do not conflate “no articles stored” with “latest refresh failed”. The centre pane should continue showing cached articles after a network error. Sidebar badges represent stored unread/total counts; transient sync health is an adjacent status indicator.
+
+For a selected feed, the renderer may use the currently loaded article count as an immediate fallback while the refreshed feed metadata is being fetched.
+
+## Rich media behaviour
+
+- Article images preserve intrinsic aspect ratio and are bounded by the reading column.
+- List thumbnails are cropped independently and should not dictate reader image dimensions.
+- Media loads lazily and supplies accessible fallback/browser actions.
+- Reddit video uses native controls; a poster must never masquerade as the final playable element.
+- Reduced-motion preferences apply to sync and loading animations as well as decorative transitions.

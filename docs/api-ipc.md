@@ -1,55 +1,110 @@
-# IPC API Reference
+# IPC API reference
 
-The entire interaction between the frontend (React) and backend (Node.js/SQLite) goes through a strictly typed Inter-Process Communication (IPC) bridge.
+The React renderer communicates with privileged code exclusively through `window.api`, exposed by `src/preload/index.ts` using Electron `contextBridge`. Renderer code must not import Electron or Node modules directly.
 
-Node integration is completely disabled in the renderer for security. All API calls must go through the `window.api` object, which is injected via `src/preload/index.ts`.
+All request/response methods return promises because they wrap `ipcRenderer.invoke()`. Event subscriptions return an unsubscribe function and should be cleaned up from React effects.
 
 ## `window.api.feeds`
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `list()` | - | `Promise<Feed[]>` | Returns all feeds, including denormalised unread counts. |
-| `add()` | `url: string`, `groupId?: number` | `Promise<number>` | Adds a feed, triggering an immediate initial sync. |
-| `update()` | `id: number`, `patch: object` | `Promise<void>` | Updates feed properties (e.g., title, interval). |
-| `delete()` | `id: number` | `Promise<void>` | Permanently deletes a feed and all associated articles. |
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `list()` | — | `Promise<Feed[]>` | Active feeds with normalised booleans, unread count and computed article count. |
+| `add(url, groupId?)` | `string`, optional `number` | `Promise<number>` | Creates a subscription and immediately refreshes that feed. |
+| `update(id, patch)` | `number`, object | `Promise<void>` | Supports URL, title, site URL, group, interval, favicon and active state. |
+| `delete(id)` | `number` | `Promise<void>` | Deletes the feed; article rows cascade. |
 
 ## `window.api.groups`
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `list()` | - | `Promise<FeedGroup[]>` | Returns all feed groups. |
-| `create()` | `name: string` | `Promise<number>` | Creates a new feed group. |
-| `update()` | `id: number`, `patch: object` | `Promise<void>` | Renames, sorts, or toggles expansion state. |
-| `delete()` | `id: number` | `Promise<void>` | Deletes a group (feeds inside become ungrouped). |
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `list()` | — | `Promise<FeedGroup[]>` | Groups ordered by `sort_order`, then name. |
+| `create(name)` | `string` | `Promise<number>` | Creates a folder. |
+| `update(id, patch)` | `number`, object | `Promise<void>` | Updates name, order, icon or expansion state. |
+| `delete(id)` | `number` | `Promise<void>` | Child feeds become ungrouped. |
 
 ## `window.api.articles`
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `list()` | `ArticleListParams` | `Promise<ArticleSummary[]>` | Cursor-paginated query for the centre pane. |
-| `get()` | `id: number` | `Promise<Article>` | Gets full HTML content for the reader pane. |
-| `totalUnread()` | - | `Promise<number>` | Aggregate unread count across all feeds (for macOS dock badge). |
-| `mark()` | `id: number`, `action`, `value: boolean` | `Promise<void>` | Toggles read/starred/saved status. |
-| `markAllRead()`| `feedId?: number` | `Promise<number>` | Bulk mark-as-read, optionally scoped to one feed. |
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `list(params)` | `ArticleListParams` | `Promise<ArticleSummary[]>` | Indexed/cursor-based list query for feed, folder or system views. |
+| `getForDigest(params)` | digest filter object | `Promise<Article[]>` | Retrieves bounded AI context by time/source. |
+| `get(id)` | `number` | `Promise<Article \| null>` | Returns the complete article body and state. |
+| `totalUnread()` | — | `Promise<number>` | Global unread aggregate. |
+| `mark(id, action, value)` | action is `read` or `saved` | `Promise<void>` | Updates the currently supported user state. `is_starred` exists in the schema but is not exposed by the current handler/UI. |
+| `markAllRead(feedId?)` | optional `number` | `Promise<number>` | Marks all or one feed read and returns the affected count. |
+| `getGithubLinks()` | — | `Promise<GitHubLink[]>` | Extracts GitHub URLs from stored articles. |
+| `getRedditComments(url)` | Reddit post URL | `Promise<RedditCommentsResult>` | Fetches/caches post metadata and comments; invalid URLs return an empty result. |
 
-## `window.api.sync`
-
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `refreshAll()` | - | `Promise<void>` | Manually triggers a sync loop across all due feeds. |
-| `refreshFeed()`| `feedId: number` | `Promise<void>` | Forces an immediate refresh of a single feed. |
-| `onUpdate()` | `(status) => void` | `() => void` | Subscribes to real-time status push events (calls back on sync start/success/error). Returns an unsubscribe function. |
+`ArticleListParams` supports the selected feed/group/system view, cursor pagination, read/saved/starred constraints and search-dependent usage in the stores. Consult the exported service type before extending it.
 
 ## `window.api.search`
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `query()` | `q: string`, `limit?: number` | `Promise<SearchResult[]>` | Executes an FTS4 MATCH query returning snippets. |
+| Method | Arguments | Result |
+|---|---|---|
+| `query(q, limit?)` | text, optional maximum | `Promise<SearchResult[]>` |
+
+Search results contain article identifiers and highlighted snippets produced from SQLite FTS4. Treat snippet markup as untrusted until it has passed the renderer's controlled rendering path.
+
+## `window.api.sync`
+
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `refreshAll()` | — | `Promise<void>` | Forces all active feeds through one non-overlapping scheduler operation. |
+| `refreshFeed(feedId)` | `number` | `Promise<void>` | Forces one feed, still respecting host/Reddit limiters. |
+| `onUpdate(callback)` | function | unsubscribe function | Receives per-feed and batch status pushes. |
+
+Status payload:
+
+```ts
+{
+  feedId: number
+  status: 'syncing' | 'success' | 'not_modified' | 'deferred' | 'error'
+  scope?: 'feed' | 'batch'
+  articlesNew?: number
+  error?: string
+}
+```
+
+`feedId: 0` plus `scope: 'batch'` represents the global operation rather than a database feed.
 
 ## `window.api.settings`
 
-| Method | Arguments | Returns | Description |
-|--------|-----------|---------|-------------|
-| `get()` | `key: string` | `Promise<string>` | Retrieves a setting value (e.g. `theme`). |
-| `set()` | `key: string`, `value: string`| `Promise<void>` | Saves a setting. |
-| `getAll()` | - | `Promise<Record<string, string>>` | Returns all KV settings. |
+| Method | Arguments | Result |
+|---|---|---|
+| `getAll()` | — | `Promise<Record<string, string>>` |
+| `get(key)` | typed `SettingKey` | `Promise<string \| null>` |
+| `set(key, value)` | typed key, string value | `Promise<void>` |
+
+Values are stored as text. The known keys cover theme/accent, font and panel dimensions, read behaviour, retention/default interval and AI provider/model/base URL/prompts.
+
+## `window.api.opml`
+
+| Method | Result | Notes |
+|---|---|---|
+| `import()` | `Promise<number>` | Opens a native file picker, imports subscriptions and starts refresh. |
+| `export()` | `Promise<boolean>` | Opens a save dialog and writes the current folders/subscriptions. |
+
+## `window.api.summary`
+
+| Method | Result | Notes |
+|---|---|---|
+| `getStatus()` | `Promise<{pending,total,isProcessing}>` | Current background-summary queue state. |
+| `trigger()` | `Promise/void` through IPC | Wakes the summariser if it is idle and running. |
+| `onStatus(callback)` | unsubscribe function | Receives queue progress broadcasts. |
+
+The summary worker processes recent (14 days) or unread articles, one at a time, and backs off when the local model is offline.
+
+## `window.api.debug`
+
+`debug.log(message)` sends renderer diagnostics to the main-process console. Do not send credentials, complete article bodies or personal model prompts through this convenience channel.
+
+## Adding a new IPC method
+
+1. Implement and validate the privileged operation in a main-process service.
+2. Register a narrowly scoped `ipcMain.handle` channel.
+3. Add the wrapper and types to `src/preload/index.ts`.
+4. Update the renderer's global API declaration if needed.
+5. Document argument validation, return type and failure semantics here.
+6. Add a focused test where the logic can be separated from Electron.
+
+Avoid generic channels such as “execute SQL”, “read file” or “fetch arbitrary URL”; they defeat the security boundary provided by the preload allow-list.

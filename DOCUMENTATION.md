@@ -1,68 +1,86 @@
-# Albatros RSS Reader — Documentation
+# Albatros documentation
 
-This document provides an ultra-detailed overview of the architecture, data flow, and underlying logic of the Albatros application. It is primarily intended for developers and advanced users who want to modify or understand the system at a granular level.
+This is the entry point for user, operator and contributor documentation. It describes the code currently present in the repository; implementation details that change frequently are kept in the focused guides below.
 
----
+## Product overview
 
-## 1. Application Architecture
+Albatros is an Electron desktop feed reader with a React renderer and a native SQLite database. Its core design goals are:
 
-Albatros is an Electron-based desktop application built using a rigid separation of concerns:
+1. **Local ownership** — subscriptions, article content and reading state live in a local database.
+2. **Responsive reading** — list queries are indexed, large lists are virtualised and media loads lazily.
+3. **Resilient ingestion** — feeds are fetched conditionally, retried conservatively and scheduled adaptively.
+4. **Untrusted-content isolation** — feed HTML is treated as hostile and sanitised at the rendering boundary.
+5. **Optional local intelligence** — Ollama and LM Studio can provide digest and summary features without an Albatros cloud service.
 
-- **Main Process** (`src/main/`): Powered by Node.js, this process handles file system access, SQLite database initialization and querying (via `sql.js` WASM), the background synchronization engine, and secure outbound networking.
-- **Renderer Process** (`src/renderer/`): The user interface, built with React 19 and Zustand. It operates in an isolated context where it cannot access Node.js APIs directly. The UI relies on `@tanstack/react-virtual` for virtualizing long lists of articles and `DOMPurify` to ensure all external RSS content is safely stripped of malicious scripts.
-- **Preload Script** (`src/preload/`): Exposes a typed, deterministic API (via `contextBridge`) to the frontend renderer. It routes UI requests to the Main process via established IPC channels.
+## Architecture
 
----
+### Electron main process — `src/main/`
 
-## 2. The Database Layer (SQLite via sql.js)
+The main process owns privileged operations:
 
-At its core, Albatros is an offline-first application, relying heavily on a native, locally-stored SQLite database.
+- opens and migrates `albatros.db` through `better-sqlite3`;
+- provides feed, article, search, settings and summary services;
+- downloads and parses RSS, Atom and JSON feeds;
+- schedules background refresh and retention maintenance;
+- handles OPML file dialogs;
+- configures the persistent embedded-browser session and ad blocker;
+- exposes allow-listed IPC handlers.
 
-### Full-Text Search (FTS4)
-We use `FTS4` to guarantee instantaneous searches across tens of thousands of articles. Rather than dynamically calculating search indices in the background or during search time, Albatros uses explicit **Database Triggers** (`src/main/db/triggers.sql`). 
+### Preload bridge — `src/preload/`
 
-When an article is `INSERTED`, `UPDATED`, or `DELETED`, SQLite automatically mirrors these mutations into the hidden `articles_fts` content table. This keeps the full-text search perfectly synced with zero application-level overhead.
+`contextBridge` publishes the typed `window.api` surface. The renderer does not receive raw `ipcRenderer`, filesystem access or Node APIs. Every new main-process capability should be explicitly added to this bridge and documented in [the IPC reference](docs/api-ipc.md).
 
-### Denormalization and Metrics
-Computing `unread_count` for feeds dynamically via a `SELECT COUNT(*)` on every UI render is computationally expensive. Albatros denormalizes this data:
-- The `feeds` table contains an `unread_count` column.
-- Highly optimized SQLite triggers automatically increment/decrement this column whenever an article's `is_read` flag mutations occur or when new unread articles are scraped.
+### Renderer — `src/renderer/`
 
----
+The renderer is a React 19 application. Zustand stores coordinate feeds, articles and UI state. Long article lists use `@tanstack/react-virtual`. External HTML is normalised, sanitised with DOMPurify and only then injected into the reader.
 
-## 3. The RAG AI Assistant (AiDigestView)
+### Persistent browser partition
 
-Albatros features a sophisticated, completely local **Retrieval-Augmented Generation (RAG)** pipeline to interact with your RSS feeds mathematically using AI.
+Embedded pages use the Electron partition `persist:adblock`. It has a prebuilt ad/tracker blocker and browser-compatible request handling for Reddit. The feed HTTP client also uses this session for Reddit RSS requests because anonymous Node networking is aggressively rate-limited.
 
-### Local LLM Integration
-The `AiDigestView.tsx` limits external dependencies by supporting local API providers out of the box:
-- **LM Studio** (`http://127.0.0.1:1234/v1`)
-- **Ollama** (`http://127.0.0.1:11434/api`)
+## Principal data flow
 
-### How The Digest Works:
-1. **Context Extraction**: Upon user prompt, the application interacts with the SQLite backend via `window.api.articles.getForDigest`. It retrieves context from thousands of recent articles based on the `timeframe` and selected feed groups (`sourceId`).
-2. **System Prompts**: The AI interprets this data against strict prompts instructing it to act as an "analytical assistant". It must meticulously synthesize the provided knowledge payload and insert precise citation markers (`[ID]`).
-3. **Streaming & Formatting**: Responses from the LLM stream directly into the React UI. During streaming, regex pipelines parse the `[ID]` strings and convert them into clickable HTML citation badges (using `marked` for Markdown preprocessing and `DOMPurify` to whitelist specific `href`, `class`, and `title` tags).
+```text
+Scheduler/manual action
+        │
+        ▼
+SyncEngine ──► HttpClient ──► publisher / Reddit
+        │                         │
+        │ response body           │ ETag / Last-Modified / Retry-After
+        ▼                         │
+FeedParser ◄──────────────────────┘
+        │ normalised articles
+        ▼
+ArticleService transaction ──► SQLite + FTS/counter triggers
+        │
+        ├─► sync_log
+        └─► sync:update IPC ──► sidebar/list refresh
+```
 
----
+Selecting an article follows the reverse read path: React invokes `window.api.articles.get`, the preload forwards the request, `ArticleService` reads SQLite, and the renderer normalises/sanitises content before display.
 
-## 4. The Sync Engine
+## Guide index
 
-The background synchronization logic pulls XML, JSON, and Atom feeds continuously.
+| Guide | Audience | Contents |
+|---|---|---|
+| [README](README.md) | Users and new contributors | Features, installation, commands, first run and quick troubleshooting. |
+| [Development](docs/development.md) | Contributors | Source tree, local workflow, native dependencies, tests and change guidelines. |
+| [Sync engine](docs/sync-engine.md) | Backend contributors | Scheduling, concurrency, retries, Reddit throttling and sync events. |
+| [Database](docs/database.md) | Backend contributors/operators | File location, pragmas, schema, FTS4, triggers, migrations and backup notes. |
+| [IPC API](docs/api-ipc.md) | Full-stack contributors | Complete `window.api` contract and push-event payloads. |
+| [Media and Reddit](docs/media-and-reddit.md) | Reader/media contributors | Images, lazy sources, Reddit JSON/comments, HLS video and fallbacks. |
+| [UI/UX](docs/ui-ux.md) | Renderer contributors | Three-pane interaction, state, accessibility and motion. |
+| [Troubleshooting](docs/troubleshooting.md) | Users/operators | Electron installation, SQLite bindings, HTTP 429, media and AI issues. |
 
-- **Exponential Backoff**: If a feed throws HTTP errors, the scraper dynamically lowers its refresh frequency to prevent UI blocks or being banned by standard providers.
-- **Cache Invalidation**: Leverages HTTP standard headers `ETag` and `Last-Modified`. If a server returns an HTTP `304 Not Modified`, the feed parser gracefully skips the database ingestion step, keeping bandwidth ultra low.
-- **SSRF Network Guards**: Albatros employs an aggressive defense mechanism within the `cross-fetch` layer, refusing any HTTP redirects or canonical requests pointing toward local network ranges (`localhost`, `127.0.0.x`, `192.168.x.x`, `10.x.x.x`) to prevent spoofing from poisoned RSS URLs.
+## Security boundaries and limitations
 
----
+- Feed URL validation blocks obvious private and loopback hosts, but it is a lightweight hostname/IP-prefix guard rather than a DNS-rebinding-proof network sandbox.
+- The renderer has `contextIsolation` enabled and `nodeIntegration` disabled.
+- Article HTML is stored raw and sanitised at render time. Code must never render `content_html` without DOMPurify.
+- Embedded web content is less trusted than the application UI and is isolated in a dedicated partition; header rewriting for Reddit is deliberately scoped to Reddit/Reddit media domains.
+- `webSecurity` is currently disabled on the main application window to support local AI/browser workflows. Contributors should not treat the renderer as a safe place for secrets.
+- AI provider URLs are user-configured local endpoints. Albatros does not authenticate, host or proxy them.
 
-## 5. Security Posture
+## Documentation maintenance
 
-Because Albatros ingests code from thousands of untrusted XML and HTML sources across the entire internet, we assume a zero-trust model:
-1. All network requests happen exclusively in the Main Process. The Renderer cannot `fetch` random URLs.
-2. The renderer uses `DOMPurify` to strip `<script>`, `onload`, and similar vector attributes out of standard articles before they are placed in `<div dangerouslySetInnerHTML />`.
-3. Strict Content-Security-Policy (CSP) inside the Electron build ensures no external scripts or non-authorized images connect without explicit proxying.
-
----
-
-*This document is the central hub for understanding the architecture of Albatros.*
+When behaviour changes, update the focused guide and the README if the change affects installation or user-visible features. Verify names against the preload API and package scripts instead of documenting planned functionality as if it already exists.

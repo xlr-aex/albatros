@@ -1,110 +1,100 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="Albatros Logo" width="160" />
+  <img src="docs/assets/logo.png" alt="Albatros" width="150" />
 
-  # Albatros RSS Reader
+  # Albatros
+
+  **A private, local-first desktop feed reader.**
+
+  RSS · Atom · JSON Feed · Reddit
+
+  <br />
+
+  [![Electron](https://img.shields.io/badge/Electron-34-1f2430?style=for-the-badge&logo=electron&logoColor=9feaf9)](https://www.electronjs.org/)
+  [![React](https://img.shields.io/badge/React-19-1f2430?style=for-the-badge&logo=react&logoColor=61dafb)](https://react.dev/)
+  [![SQLite](https://img.shields.io/badge/SQLite-Local-1f2430?style=for-the-badge&logo=sqlite&logoColor=44a2d9)](https://sqlite.org/)
+
+  <br />
+
+  [Features](#features) · [Installation](#installation) · [Local AI](#local-ai) · [Documentation](#documentation)
 </div>
 
-[![Electron](https://img.shields.io/badge/Electron-34.x-blue?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white)](https://reactjs.org/)
-[![SQLite](https://img.shields.io/badge/SQLite-FTS4-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-**Albatros** is a privacy-native desktop RSS/Atom/JSON feed reader. Designed for users who value speed, local-first data ownership, and a clean, 3-pane reading experience reminiscent of classical readers. 
-
-Built on a robust foundation of **Electron**, **React 19**, and **SQLite (sql.js WASM)**, Albatros offers a seamless bridge between the traditional web and a modern, offline-first desktop application, enhanced with an advanced local AI-powered RAG (Retrieval-Augmented Generation) assistant.
-
 ---
 
-## 🚀 Key Features
+![Albatros three-pane interface](docs/assets/mockup.png)
 
-### 🛡️ Privacy & Security First
-- **Zero Telemetry**: No tracking, no data collection. Your subscriptions and reading habits stay entirely on your machine.
-- **Local-First Architecture**: Your entire database resides locally. Albatros works perfectly offline with all your downloaded content.
-- **SSRF Network Guards**: Built-in protection against Server-Side Request Forgery, preventing malicious feeds from scanning your local network or localhost endpoints.
-- **Instant Sanitization**: All incoming HTML is passed through **DOMPurify** at the rendering layer, ensuring no malicious scripts can ever be executed.
+Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and optional local AI—without requiring an account or hosted backend.
 
-### 🤖 Built-In AI Digest & RAG Capabilities
-- **Local LLM Integration**: Connect directly to your local models using either **LM Studio** or **Ollama**, completely offline.
-- **Retrieval-Augmented Generation (RAG)**: Use the "AiDigestView" to chat with your feeds. The system performs a deep scan of up to your last 10,000 articles using SQLite FTS4.
-- **Strict Sourcing & Citations**: The AI Assistant is instructed to meticulously cite its sources. Clickable citation badges (e.g., `[123]`) route you directly to the exact article referenced in your database.
-- **Custom Prompts**: Set customized instructions for summaries or news digests directly via your settings.
+## Features
 
-### ⚡ Technical Excellence
-- **Hardware-Accelerated Virtualization**: Utilizing `@tanstack/react-virtual`, the UI is buttery smooth (60 FPS) rendering tens of thousands of items simultaneously.
-- **Smart Sync Engine**: An adaptive polling system that scales fetch intervals based on update frequency and handles exponential backoff for failing feeds.
-- **Bandwidth Efficiency**: Full support for `ETag` and `Last-Modified` HTTP headers to avoid re-downloading unchanged feed content.
+| Reading | Media |
+|---|---|
+| Clean three-pane desktop layout | Responsive, high-quality article images |
+| Feed folders and unread counters | Reddit comments and HLS video playback |
+| Saved posts and full-text search | Lazy loading with reliable fallbacks |
+| Offline access to downloaded content | Embedded browser with ad blocking |
 
-### 🔍 Advanced Search & Organization
-- **Global Search**: Powered by **SQLite FTS4** (Full-Text Search), providing instant semantic matching across your entire library.
-- **Triggers-Driven Metrics**: Unread counts are computed via SQLite triggers for zero-overhead metrics calculation during render.
-- **Contextual Views**: Dedicated "Unread", "Starred", "Today", and "Saved" views to keep your focus where it matters.
-- **Reddit Native Comments**: Automatically fetches and renders Reddit comments for posts directly inside the article reader.
+| Sync | Privacy |
+|---|---|
+| RSS, Atom, JSON Feed and Reddit | Local SQLite database |
+| Adaptive scheduling and HTTP caching | No telemetry |
+| Rate-limit-aware Reddit queue | No Albatros cloud service |
+| OPML import and export | Optional local-only AI providers |
 
----
+## Installation
 
-## ⌨️ Productivity & UX
+Node.js 20 or 22 LTS and npm 9+ are recommended.
 
-Albatros is designed for "power readers." Almost every action is mapped to a keyboard shortcut for a mouse-free experience.
-
-| Category | Command | Key |
-|---|---|---|
-| **Navigation** | Next Article | `j` or `↓` |
-| | Previous Article | `k` or `↑` |
-| | Select Current | `Enter` / `Space` |
-| **Actions** | Toggle Read/Unread | `m` |
-| | Toggle Starred | `s` |
-| | Open in Browser | `v` |
-| | Share/Link Popup | `l` |
-| **System** | Toggle Search | `/` |
-| | Focus Sidebar | `q` |
-| | Close Modal/Popup | `Esc` |
-
----
-
-## 🛠️ Technical Architecture
-
-Albatros follows a strict separation of concerns to maximize security and stability:
-
-- **Main Process**: Handles the SQLite database (`sql.js`), the Background Sync Engine, and secure networking via native `fetch` and custom FTS caching logic.
-- **Renderer Process**: A React 19 application using **Zustand** for state management and DOMPurify for HTML sanitization.
-- **Preload Script**: Acts as a secure, typed bridge between the two processes, exposing no raw Node.js APIs to the frontend.
-
-For a comprehensive technical deep-dive, see the official documentation.
-
-👉 **[Go to DOCUMENTATION.md](./DOCUMENTATION.md)**
-
----
-
-## 📦 Getting Started
-
-### Prerequisites
-- Node.js **20+**
-- npm **9+**
-
-### Installation
 ```bash
-# Clone the repository
 git clone https://github.com/xlr-aex/albatros.git
 cd albatros
-
-# Install dependencies
 npm install
-```
-
-### Development
-```bash
-# Start the dev server & Electron app
 npm run dev
 ```
 
-### Production Build
+<div align="center">
+
+| Development | Verification | Production |
+|:---:|:---:|:---:|
+| `npm run dev` | `npm run test:unit` | `npm run build` |
+| Start Electron and Vite | Run the unit suite | Create the application build |
+
+</div>
+
+## Local AI
+
+AI features are optional and connect directly to a model running on your machine.
+
+| Provider | Default address |
+|---|---|
+| Ollama | `http://127.0.0.1:11434` |
+| LM Studio | `http://127.0.0.1:1234` |
+
+Select the provider, URL and model in Albatros settings. The reader continues to work normally when no model is running.
+
+## Keyboard navigation
+
+| Previous article | Next article | Close dialog |
+|:---:|:---:|:---:|
+| `k` or `↑` | `j` or `↓` | `Esc` |
+
+## Documentation
+
+| Start here | Technical guides | Help |
+|---|---|---|
+| [Documentation overview](DOCUMENTATION.md) | [Development](docs/development.md) | [Troubleshooting](docs/troubleshooting.md) |
+| [UI and accessibility](docs/ui-ux.md) | [Sync engine](docs/sync-engine.md) | [Media and Reddit](docs/media-and-reddit.md) |
+| | [Database](docs/database.md) · [IPC API](docs/api-ipc.md) | |
+
+## Data and privacy
+
+The database is stored locally as `albatros.db` in Electron's application-data directory. Albatros does not collect telemetry. Close the application before manually copying the database for backup.
+
+## Contributing
+
 ```bash
-# Build for the current platform
+npm run build:check
+npm run test:unit
 npm run build
 ```
 
----
-
-## 📜 License
-
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Keep privileged operations in the Electron main process, expose only narrow methods through the preload bridge, and include focused tests with behavioural changes.

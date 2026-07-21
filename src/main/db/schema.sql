@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Albatros RSS Reader — Database Schema
--- SQLite via sql.js (WASM), version 1
+-- SQLite via better-sqlite3, version 1
 -- =============================================================================
 -- Naming conventions:
 --   Tables   : snake_case, plural
@@ -62,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_feeds_group      ON feeds (group_id);
 
 -- ─── Articles ────────────────────────────────────────────────────────────────
 -- One row per article / entry in a feed.
--- content_html is stored sanitised (DOMPurify applied before INSERT).
+-- content_html is stored raw and sanitised with DOMPurify at render time.
 -- content_text is the plain-text version used by the FTS4 virtual table.
 
 CREATE TABLE IF NOT EXISTS articles (
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS articles (
   title          TEXT,
   author         TEXT,
 
-  -- Full HTML body, sanitised at write time (DOMPurify in the sync engine)
+  -- Full HTML body; sanitised immediately before display in the renderer
   content_html   TEXT,
 
   -- Plain-text version of the content, used exclusively by FTS4 for search
