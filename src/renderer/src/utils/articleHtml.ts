@@ -23,6 +23,7 @@ export function normalizeArticleHtml(
   html: string,
   baseUrl: string | null | undefined,
   fallbackThumbnail: string | null | undefined,
+  hasPrimaryVideo = false,
 ): string {
   if (typeof DOMParser === 'undefined' || typeof document === 'undefined') return html
 
@@ -36,18 +37,28 @@ export function normalizeArticleHtml(
     else link.remove()
   }
 
-  if (redditVideoLinks.length > 0) {
+  if (redditVideoLinks.length > 0 || hasPrimaryVideo) {
     for (const image of Array.from(doc.querySelectorAll<HTMLImageElement>('img'))) {
       const src = image.getAttribute('src') || ''
-      if (!/(?:external-preview|preview)\.redd\.it/i.test(src)) continue
-      const parent = image.closest('div')
-      if (parent && parent.querySelectorAll('img').length === 1 && !parent.textContent?.trim()) parent.remove()
+      const isRedditPreview = /(?:external-preview|preview|i)\.redd\.it|redditmedia\.com/i.test(src)
+      const isFallbackPoster = Boolean(
+        fallbackThumbnail
+        && (src === fallbackThumbnail || getPreferredImageUrl(src) === getPreferredImageUrl(fallbackThumbnail)),
+      )
+      if (!isRedditPreview && !isFallbackPoster) continue
+
+      const wrapper = image.closest('a, figure, div')
+      if (
+        wrapper
+        && wrapper.querySelectorAll('img').length === 1
+        && !wrapper.textContent?.trim()
+      ) wrapper.remove()
       else image.remove()
     }
   }
 
   const images = Array.from(doc.querySelectorAll('img'))
-  let usableImage = redditVideoLinks.length > 0
+  let usableImage = redditVideoLinks.length > 0 || hasPrimaryVideo
 
   for (const image of images) {
     const candidate =

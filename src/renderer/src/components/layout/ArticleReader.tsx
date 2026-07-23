@@ -521,20 +521,28 @@ export function ArticleReader() {
     return doc.body.innerHTML
   }, [safeHtml, currentSearchQuery])
 
-  const normalizedHtml = React.useMemo(
-    () => normalizeArticleHtml(
-      highlightedHtml || safeHtml || '',
-      selectedArticle?.url,
-      selectedArticle?.thumbnail_url,
-    ),
-    [highlightedHtml, safeHtml, selectedArticle?.url, selectedArticle?.thumbnail_url],
-  )
-
   const redditVideoUrl = React.useMemo(() => {
     const html = selectedArticle?.content_html || ''
     const match = /href=["'](https:\/\/(?:www\.)?reddit\.com\/link\/[^/]+\/video\/[^/]+\/player(?:[?#][^"']*)?)["']/i.exec(html)
     return match?.[1]?.replace(/&amp;/g, '&') || null
   }, [selectedArticle?.content_html])
+
+  const normalizedHtml = React.useMemo(
+    () => normalizeArticleHtml(
+      highlightedHtml || safeHtml || '',
+      selectedArticle?.url,
+      selectedArticle?.thumbnail_url,
+      Boolean(redditVideo || redditVideoUrl),
+    ),
+    [
+      highlightedHtml,
+      safeHtml,
+      selectedArticle?.url,
+      selectedArticle?.thumbnail_url,
+      redditVideo,
+      redditVideoUrl,
+    ],
+  )
 
   useEffect(() => {
     const root = contentRef.current

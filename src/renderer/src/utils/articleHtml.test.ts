@@ -40,4 +40,18 @@ describe('normalizeArticleHtml', () => {
     expect(html).not.toContain('/video/media123/player')
     expect(html).not.toContain('<img')
   })
+
+  it('keeps a Reddit video thumbnail for the player poster instead of duplicating it in the body', () => {
+    const poster = 'https://preview.redd.it/video-cover.jpg'
+    const html = normalizeArticleHtml(
+      `<p>Post description</p><a href="https://reddit.com/r/test/comments/abc"><img src="${poster}"></a>`,
+      'https://reddit.com/r/test/comments/abc',
+      poster,
+      true,
+    )
+
+    expect(html).toContain('Post description')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('video-cover.jpg')
+  })
 })
