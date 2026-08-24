@@ -19,6 +19,15 @@ describe('normalizeArticleHtml', () => {
     expect(html).toContain('src="https://cdn.example.com/cover.jpg"')
   })
 
+  it('ignores 1x1 tracking pixels when deciding to insert the feed thumbnail', () => {
+    const html = normalizeArticleHtml(
+      '<p>Text only</p><img src="https://track.example.com/pixel.gif" width="1" height="1" alt="">',
+      'https://example.com/post',
+      'https://cdn.example.com/cover.jpg',
+    )
+    expect(html).toContain('src="https://cdn.example.com/cover.jpg"')
+  })
+
   it('upgrades TechXplore thumbnail URLs to the original asset', () => {
     expect(getPreferredImageUrl('https://scx1.b-cdn.net/csz/news/tmb/2026/example.jpg'))
       .toBe('https://scx2.b-cdn.net/gfx/news/2026/example.jpg')
