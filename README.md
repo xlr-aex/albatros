@@ -12,6 +12,7 @@
   [![Electron](https://img.shields.io/badge/Electron-34-1f2430?style=for-the-badge&logo=electron&logoColor=9feaf9)](https://www.electronjs.org/)
   [![React](https://img.shields.io/badge/React-19-1f2430?style=for-the-badge&logo=react&logoColor=61dafb)](https://react.dev/)
   [![SQLite](https://img.shields.io/badge/SQLite-Local-1f2430?style=for-the-badge&logo=sqlite&logoColor=44a2d9)](https://sqlite.org/)
+  [![License](https://img.shields.io/badge/License-MIT-1f2430?style=for-the-badge)](LICENSE)
 
   <br />
 
@@ -99,3 +100,7 @@ npm run build
 ```
 
 Keep privileged operations in the Electron main process, expose only narrow methods through the preload bridge, and include focused tests with behavioural changes.
+
+## License
+
+Released under the [MIT License](LICENSE).
