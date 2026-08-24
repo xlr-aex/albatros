@@ -915,7 +915,13 @@ export function ArticleReader() {
                 htmlToRender = DOMPurify.sanitize(mediaHtml + redditSelftext!, { FORCE_BODY: true })
               }
 
-              if (isLoadingArticle && !htmlToRender) {
+              if (isLoadingArticle) {
+                // Spinner for the whole fetch window. The optimistic summary
+                // has content_html: null, but normalizeArticleHtml still
+                // inserts the feed thumbnail — rendering that partial HTML
+                // made the image flash for a split second before the full
+                // content replaced the DOM (most visible on image-less feeds
+                // like singularityhub.com).
                 return (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 0' }}>
                     <span className="spinner" role="status" aria-label="Loading content" style={{ width: '1.5rem', height: '1.5rem', opacity: 0.5 }} />
@@ -998,6 +1004,7 @@ export function ArticleReader() {
             src={lightbox.src}
             alt={lightbox.alt}
             className={styles.lightboxImg}
+            referrerPolicy="no-referrer"
             onClick={e => e.stopPropagation()}
           />
           <button
