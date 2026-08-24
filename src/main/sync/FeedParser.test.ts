@@ -27,6 +27,29 @@ describe('FeedParser', () => {
     expect(result.articles[0].content_html).toBe('Content of article 1')
   })
 
+  it('extracts the site icon from the RSS channel image', () => {
+    const rss = `<?xml version="1.0" encoding="UTF-8" ?>
+    <rss version="2.0">
+    <channel>
+      <title>Icon Feed</title>
+      <link>https://cms.example.com/category/news/</link>
+      <image>
+        <url>https://example.com/uploads/favicon.png?width=32</url>
+        <title>Icon Feed</title>
+        <link>https://cms.example.com/category/news/</link>
+      </image>
+      <item>
+        <title>Article 1</title>
+        <link>https://example.com/article1</link>
+        <description>Content</description>
+      </item>
+    </channel>
+    </rss>`
+
+    const result = parseFeed(rss, 'application/rss+xml')
+    expect(result.meta.icon_url).toBe('https://example.com/uploads/favicon.png?width=32')
+  })
+
   it('parses Atom 1.0 correctly', () => {
     const atom = `<?xml version="1.0" encoding="utf-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom">

@@ -24,11 +24,30 @@ import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
 import { persistDatabase } from '../db/connection'
 
-function getFaviconUrl(siteUrl: string | null, feedUrl: string): string | null {
+function getBaseDomain(hostname: string): string {
+  const parts = hostname.toLowerCase().split('.').filter(Boolean)
+  if (parts.length <= 2) return parts.join('.')
+  // Rough public-suffix handling for common two-part TLDs (co.uk, com.au…)
+  const twoPartTld = /^(co|com|org|net|gov|ac)\.[a-z]{2}$/.test(parts.slice(-2).join('.'))
+  return parts.slice(twoPartTld ? -3 : -2).join('.')
+}
+
+function getFaviconUrl(siteUrl: string | null, feedUrl: string, feedIconUrl: string | null): string | null {
+  // Prefer the icon the feed advertises itself (channel image, atom logo…):
+  // it is guaranteed to exist, unlike third-party favicon services.
+  if (feedIconUrl && /^https?:\/\//i.test(feedIconUrl)) return feedIconUrl
   try {
-    const url = siteUrl || feedUrl
-    if (!url) return null
-    const hostname = new URL(url).hostname
+    const siteHost = siteUrl ? new URL(siteUrl).hostname : null
+    const feedHost = feedUrl ? new URL(feedUrl).hostname : null
+    // Feeds are sometimes hosted on a different host than the site (e.g.
+    // cms.singularityhub.com). When both belong to the same site, trust the
+    // site URL; otherwise fall back to the feed host so the favicon service
+    // resolves a domain that actually has an icon.
+    const hostname =
+      siteHost && feedHost && getBaseDomain(siteHost) === getBaseDomain(feedHost)
+        ? siteHost
+        : feedHost ?? siteHost
+    if (!hostname) return null
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
   } catch {
     return null
@@ -273,7 +292,7 @@ export class SyncEngine {
         }
 
         // Update feed metadata from parsed feed info
-        const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl)
+        const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl, parsed.meta.icon_url)
         if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
           this.feedService.update(
             feed.id,

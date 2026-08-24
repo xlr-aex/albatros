@@ -33,10 +33,21 @@ import { HighlightText } from './HighlightText'
 import styles from './Sidebar.module.css'
 import logo from '../../assets/logo.png'
 
+function getBaseDomain(hostname: string): string {
+  const parts = hostname.toLowerCase().split('.').filter(Boolean)
+  if (parts.length <= 2) return parts.join('.')
+  const twoPartTld = /^(co|com|org|net|gov|ac)\.[a-z]{2}$/.test(parts.slice(-2).join('.'))
+  return parts.slice(twoPartTld ? -3 : -2).join('.')
+}
+
 function getFaviconFallbackUrl(feed: Feed): string {
   try {
-    const url = feed.site_url || feed.url
-    const hostname = new URL(url).hostname
+    const siteHost = feed.site_url ? new URL(feed.site_url).hostname : null
+    const feedHost = new URL(feed.url).hostname
+    // Feeds hosted on a different host than their site (cms.example.com…)
+    // must not poison the favicon lookup — prefer the feed host in that case.
+    const hostname =
+      siteHost && getBaseDomain(siteHost) === getBaseDomain(feedHost) ? siteHost : feedHost
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
   } catch {
     return ''
@@ -376,6 +387,7 @@ export function Sidebar() {
       <div className={`${styles.header} drag-region`}>
         <div className={styles.logo}>
           <img src={logo} className={styles.logoImg} alt="Albatros" />
+          <span className={styles.logoText}>ALBATROS</span>
         </div>
         <div className={styles.actions}>
           <button

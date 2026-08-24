@@ -25,6 +25,8 @@ export interface ParsedFeedMeta {
   site_url: string | null
   description: string | null
   language: string | null
+  /** Site icon advertised by the feed itself (channel image, atom icon/logo, jsonfeed favicon). */
+  icon_url: string | null
 }
 
 export interface ParsedArticle {
@@ -100,6 +102,7 @@ function parseRss(rss: Record<string, unknown>): ParseResult {
     site_url: coerceText(channel['link']),
     description: coerceText(channel['description']),
     language: coerceText(channel['language']),
+    icon_url: coerceText((channel['image'] as Record<string, unknown> | undefined)?.['url']),
   }
 
   const rawItems = asArray(channel['item']) as Record<string, unknown>[]
@@ -205,6 +208,7 @@ function parseAtom(feed: Record<string, unknown>): ParseResult {
     site_url: extractAtomLink(feed),
     description: coerceText(feed['subtitle']),
     language: (feed['@_xml:lang'] as string | undefined) ?? null,
+    icon_url: coerceText(feed['icon']) ?? coerceText(feed['logo']),
   }
 
   const rawEntries = asArray(feed['entry']) as Record<string, unknown>[]
@@ -360,6 +364,7 @@ function parseJsonFeed(body: string): ParseResult {
     site_url: (obj['home_page_url'] as string | undefined) ?? null,
     description: (obj['description'] as string | undefined) ?? null,
     language: (obj['language'] as string | undefined) ?? null,
+    icon_url: (obj['favicon'] as string | undefined) ?? (obj['icon'] as string | undefined) ?? null,
   }
 
   const items = asArray(obj['items']) as Record<string, unknown>[]
@@ -623,5 +628,5 @@ function fixHackerNewsContent(html: string, item: Record<string, unknown>): stri
 }
 
 function emptyMeta(): ParsedFeedMeta {
-  return { title: null, site_url: null, description: null, language: null }
+  return { title: null, site_url: null, description: null, language: null, icon_url: null }
 }
