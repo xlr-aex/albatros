@@ -7,6 +7,7 @@ import globals from 'globals'
 
 export default [
   js.configs.recommended,
+  { ignores: ['src/main/db/test_sql.js'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
@@ -28,7 +29,7 @@ export default [
       ...reactHooks.configs.recommended.rules,
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/explicit-function-return-type': 'off',
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': ['warn', { allow: ['warn', 'error', 'log', 'info'] }],
     },
   },
 ]

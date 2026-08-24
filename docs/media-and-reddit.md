@@ -58,7 +58,16 @@ Loading HLS.js dynamically keeps the normal reader path lighter, although the pr
 
 ## Embedded browser
 
-The embedded webview uses `partition="persist:adblock"`. The main process enables ad/tracker blocking for that partition and scopes Reddit header rewriting to Reddit/Reddit-media URLs. Response headers that prevent framing are adjusted only for this embedded Reddit use case.
+The embedded webview uses `partition="persist:adblock"`. That session carries a prebuilt EasyList + EasyPrivacy engine (network-level blocking via `onBeforeRequest`) and Reddit-specific request rewriting (clean User-Agent, normalised `Sec-Fetch-*` headers) installed by the main process at bootstrap.
+
+Two constraints are load-bearing:
+
+- **Cosmetic filters must stay disabled** (`loadCosmeticFilters: false` in `src/main/index.ts`). The cosmetic-filter preload injects scriptlets into every page, which violates Reddit's nonce-based CSP and leaves the webview permanently blank (ghostery/adblocker#4234). Network filtering keeps blocking ads/trackers without touching page content.
+- **Electron allows only one listener per `webRequest` event.** The Reddit response-header handler registered by the app intentionally replaces the adblocker's own `onHeadersReceived`; the adblocker does not need it because cosmetic filtering is off.
+
+Reddit serves a JavaScript challenge to first-time clients; the embedded webview solves it automatically and stores the resulting cookies in the partition. The same partition serves the hidden webview that recovers post JSON, so comments/self-text/video enrichment shares the challenge-free cookie state.
+
+The engine cache is versioned (`adblocker-engine-v2.bin`): the engine serialises its config, so an older cache file would silently restore cosmetic filtering on load.
 
 ## Failure modes
 
@@ -69,5 +78,7 @@ The embedded webview uses `partition="persist:adblock"`. The main process enable
 | Black Reddit video rectangle | Player iframe/HLS metadata unavailable or blocked. | Native HLS/HLS.js attempt, poster and browser fallback. |
 | Preview shown as a still image | Reddit player link was not recognised. | Add a focused normaliser fixture/test for the new URL pattern. |
 | Video has no audio | Reddit DASH/HLS source composition changed. | Prefer the HLS playlist; direct fallback video may be video-only. |
+| Embedded Reddit page stays black/empty | Cosmetic-filter preload violating page CSP (must stay disabled) or a challenge that never solved. | Check main-process logs for CSP refusals sourced from `@cliqz/adblocker-electron`; restart to reload the engine config. |
+| Reddit comments/self-text never load | Post `.json` endpoint blocked (HTTP 403) for the current session. | The hidden webview solves Reddit's challenge first; cached articles and the browser action remain available. |
 
 Any new media heuristic should be deterministic, preserve a fallback and include a unit test in `articleHtml.test.ts` or `FeedParser.test.ts`.

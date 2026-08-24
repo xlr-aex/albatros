@@ -150,7 +150,7 @@ export class ArticleService {
     }
 
     if (params.cursor_published_at !== undefined && params.cursor_id !== undefined) {
-      conditions.push('(a.published_at < ? OR (a.published_at = ? AND a.id < ?))')
+      conditions.push('(COALESCE(a.published_at, a.created_at) < ? OR (COALESCE(a.published_at, a.created_at) = ? AND a.id < ?))')
       bindings.push(params.cursor_published_at, params.cursor_published_at, params.cursor_id)
     }
 
@@ -164,11 +164,11 @@ export class ArticleService {
         f.title  AS feed_title,
         f.favicon_url AS feed_favicon,
         a.title, a.author, a.excerpt, a.thumbnail_url,
-        a.published_at, a.is_read, a.is_starred, a.is_saved
+        a.published_at, a.created_at, a.is_read, a.is_starred, a.is_saved
       FROM articles a
       JOIN feeds f ON f.id = a.feed_id
       ${where}
-      ORDER BY a.published_at DESC, a.id DESC
+      ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
       LIMIT ?
     `
     bindings.push(limit)
@@ -237,7 +237,8 @@ export class ArticleService {
         fromClause += ' JOIN articles_fts fts ON fts.docid = a.id'
         
         // Strategy: Try AND first, fall back to OR if few results found.
-        const ftsQueryAnd = words.map(w => `"${w}"*`).join(' AND ')
+        // Bare prefix terms (FTS4 ignores a trailing * after a quoted term)
+        const ftsQueryAnd = words.map(w => `${w}*`).join(' AND ')
         
         const tempConditions = [...conditions, 'articles_fts MATCH ?']
         const tempBindings = [...bindings, ftsQueryAnd]
@@ -261,7 +262,7 @@ export class ArticleService {
 
         const ftsQuery = hasEnoughAndResults 
           ? ftsQueryAnd 
-          : words.map(w => `"${w}"*`).join(' OR ')
+          : words.map(w => `${w}*`).join(' OR ')
 
         conditions.push('articles_fts MATCH ?')
         bindings.push(ftsQuery)
@@ -353,8 +354,13 @@ export class ArticleService {
     if (!q) return []
 
     const safeQuery = q.replace(/"/g, '""')
-    const matchQuery = `"${safeQuery}"*`
-    const likeQuery = `%${q}%`
+    // FTS4 ignores a trailing * after a quoted term, so emit bare prefix terms instead
+    const matchQuery = safeQuery
+      .split(/\s+/)
+      .map(w => `${w.replace(/[*()]/g, '')}*`)
+      .filter(w => w !== '*')
+      .join(' ')
+    const likeQuery = `%${q.replace(/[%_\\]/g, '\\$&')}%`
 
     const sql = `
       SELECT
@@ -373,7 +379,7 @@ export class ArticleService {
       FROM articles a
       JOIN feeds f ON f.id = a.feed_id
       LEFT JOIN feed_groups fg ON fg.id = f.group_id
-      WHERE f.title LIKE ? OR fg.name LIKE ?
+      WHERE f.title LIKE ? ESCAPE '\\' OR fg.name LIKE ? ESCAPE '\\'
 
       ORDER BY published_at DESC
       LIMIT 100
@@ -389,24 +395,32 @@ export class ArticleService {
 
   // ── Writes ────────────────────────────────────────────────────────────────
 
-  upsert(input: UpsertArticleInput): { id: number; isNew: boolean } {
+  upsert(input: UpsertArticleInput): { id: number; isNew: boolean; updated: boolean } {
     const existing = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as { id: number } | undefined
     if (existing) {
-      this.db.prepare(
+      const info = this.db.prepare(
         `UPDATE articles SET
            title = COALESCE(?, title),
            content_html = COALESCE(?, content_html),
            content_text = COALESCE(?, content_text),
            excerpt = COALESCE(?, excerpt),
            enclosure_type = COALESCE(?, enclosure_type),
-           thumbnail_url = COALESCE(?, thumbnail_url)
+           thumbnail_url = COALESCE(?, thumbnail_url),
+           url = COALESCE(?, url),
+           author = COALESCE(?, author),
+           enclosure_url = COALESCE(?, enclosure_url),
+           published_at = COALESCE(?, published_at)
           WHERE id = ?
             AND (COALESCE(?, title) IS NOT title
               OR COALESCE(?, content_html) IS NOT content_html
               OR COALESCE(?, content_text) IS NOT content_text
               OR COALESCE(?, excerpt) IS NOT excerpt
               OR COALESCE(?, enclosure_type) IS NOT enclosure_type
-              OR COALESCE(?, thumbnail_url) IS NOT thumbnail_url)`
+              OR COALESCE(?, thumbnail_url) IS NOT thumbnail_url
+              OR COALESCE(?, url) IS NOT url
+              OR COALESCE(?, author) IS NOT author
+              OR COALESCE(?, enclosure_url) IS NOT enclosure_url
+              OR COALESCE(?, published_at) IS NOT published_at)`
       ).run(
           input.title ?? null,
           input.content_html ?? null,
@@ -414,16 +428,24 @@ export class ArticleService {
           input.excerpt ?? null,
           input.enclosure_type ?? null,
           input.thumbnail_url ?? null,
+          input.url ?? null,
+          input.author ?? null,
+          input.enclosure_url ?? null,
+          input.published_at ?? null,
           existing.id,
           input.title ?? null,
           input.content_html ?? null,
           input.content_text ?? null,
           input.excerpt ?? null,
           input.enclosure_type ?? null,
-          input.thumbnail_url ?? null
+          input.thumbnail_url ?? null,
+          input.url ?? null,
+          input.author ?? null,
+          input.enclosure_url ?? null,
+          input.published_at ?? null
       )
 
-      return { id: existing.id, isNew: false }
+      return { id: existing.id, isNew: false, updated: info.changes > 0 }
     }
 
     const now = Math.floor(Date.now() / 1000)
@@ -454,24 +476,26 @@ export class ArticleService {
     // In rare cases where IGNORE kicks in due to uniqueness violation not caught by SELECT
     if (info.changes === 0) {
         const fallBack = this.db.prepare('SELECT id FROM articles WHERE feed_id = ? AND guid = ?').get(input.feed_id, input.guid) as { id: number }
-        return { id: fallBack.id, isNew: false }
+        return { id: fallBack.id, isNew: false, updated: false }
     }
 
-    return { id: Number(info.lastInsertRowid), isNew: true }
+    return { id: Number(info.lastInsertRowid), isNew: true, updated: false }
   }
 
   /** Upserts a feed batch in one SQLite transaction to avoid per-row commits. */
   upsertMany(inputs: UpsertArticleInput[]): { articlesNew: number; articlesUpdated: number } {
     let articlesNew = 0
+    let articlesUpdated = 0
     const run = this.db.transaction(() => {
       for (const input of inputs) {
         if (!input.guid) continue
         const result = this.upsert(input)
         if (result.isNew) articlesNew++
+        else if (result.updated) articlesUpdated++
       }
     })
     run()
-    return { articlesNew, articlesUpdated: inputs.length - articlesNew }
+    return { articlesNew, articlesUpdated }
   }
 
   setRead(id: number, value: boolean): void {
@@ -485,6 +509,10 @@ export class ArticleService {
     } else {
       this.db.prepare('DELETE FROM read_later WHERE article_id = ?').run(id)
     }
+  }
+
+  setStarred(id: number, value: boolean): void {
+    this.db.prepare('UPDATE articles SET is_starred = ? WHERE id = ?').run(value ? 1 : 0, id)
   }
 
   updateSummary(id: number, summary: string): void {

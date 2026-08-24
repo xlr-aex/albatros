@@ -92,6 +92,7 @@ The database is stored locally as `albatros.db` in Electron's application-data d
 ## Contributing
 
 ```bash
+npm run lint
 npm run build:check
 npm run test:unit
 npm run build

@@ -105,6 +105,10 @@ export const useUiStore = create<UiStore>((set, _get) => ({
               }, true)
             } else if (sel.type === 'group' && sel.groupId !== undefined) {
               void artStore.loadArticles({ group_id: sel.groupId }, true)
+            } else if (sel.type === 'saved') {
+              void artStore.loadArticles({ saved_only: true }, true)
+            } else if (sel.type === 'today') {
+              void artStore.loadArticles({ today_only: true }, true)
             }
           }
         }, 500)

@@ -268,21 +268,29 @@ export function ArticleReader() {
   const frozenContentHtmlRef = useRef<string | null>(null)
 
   const [redditJsonUrl, setRedditJsonUrl] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hiddenWebviewRef = useRef<any>(null)
+  /** Article the hidden webview was started for — stale results are discarded. */
+  const hiddenWebviewArticleIdRef = useRef<number | null>(null)
 
   const handleHiddenWebviewDomReady = useCallback(async () => {
     const webview = hiddenWebviewRef.current
+    const expectedId = hiddenWebviewArticleIdRef.current
     if (!webview) return
     try {
       const text = await webview.executeJavaScript('document.body.innerText')
+      // The user may have switched articles while the page was loading
+      if (expectedId === null || hiddenWebviewArticleIdRef.current !== expectedId) return
       const json = JSON.parse(text)
       
       const commentsData = json[1]?.data?.children || []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parseComment = (child: any): any => {
         if (child.kind === 't1' && child.data && child.data.body) {
           let html = child.data.body_html || ''
           html = html.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const replies: any[] = []
           if (child.data.replies && child.data.replies.data && child.data.replies.data.children) {
             for (const replyNode of child.data.replies.data.children) {
@@ -332,13 +340,18 @@ export function ArticleReader() {
         })
       }
 
+      // Re-validate before committing state — the article may have changed during parse
+      if (hiddenWebviewArticleIdRef.current !== expectedId) return
+
       setLiveComments(comments)
       if (selftextHtml) setRedditSelftext(selftextHtml)
     } catch (err) {
       console.warn('Failed to parse Reddit comments from hidden webview:', err)
     } finally {
-      setIsLoadingComments(false)
-      setRedditJsonUrl(null)
+      if (hiddenWebviewArticleIdRef.current === expectedId) {
+        setIsLoadingComments(false)
+        setRedditJsonUrl(null)
+      }
     }
   }, [])
 
@@ -368,12 +381,29 @@ export function ArticleReader() {
 
     if (selectedArticle?.url && selectedArticle.url.includes('reddit.com')) {
       setIsLoadingComments(true)
+      hiddenWebviewArticleIdRef.current = selectedArticle.id
       const cleanUrl = selectedArticle.url.replace(/\/$/, '') + '/.json'
       setRedditJsonUrl(cleanUrl)
     } else {
+      hiddenWebviewArticleIdRef.current = null
       setRedditJsonUrl(null)
+      setIsLoadingComments(false)
     }
   }, [selectedArticle?.id, selectedArticle?.url])
+
+  // Safety net: if the hidden webview never fires dom-ready (network error,
+  // blocked request…), stop the comments spinner instead of spinning forever.
+  useEffect(() => {
+    if (!redditJsonUrl || !isLoadingComments) return
+    const timeout = window.setTimeout(() => {
+      if (hiddenWebviewArticleIdRef.current !== null) {
+        hiddenWebviewArticleIdRef.current = null
+        setIsLoadingComments(false)
+        setRedditJsonUrl(null)
+      }
+    }, 20_000)
+    return () => window.clearTimeout(timeout)
+  }, [redditJsonUrl, isLoadingComments])
 
   // Track webview load state
   useEffect(() => {
@@ -400,6 +430,7 @@ export function ArticleReader() {
       setIsWebviewLoading(false)
       setWebviewError(`Could not load page (${e.errorDescription || 'unknown error'})`)
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onConsole = (e: any) => {
       window.api.debug.log(`[Webview Content] [Level ${e.level}] ${e.message} (${e.sourceId}:${e.line})`)
     }
@@ -489,6 +520,9 @@ export function ArticleReader() {
     const words = q.split(/\s+/).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     const allMatches = [q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), ...words].sort((a, b) => b.length - a.length)
     const regex = new RegExp(`(${allMatches.join('|')})`, 'gi')
+    // Non-global copy for .test() — a /g regex advances lastIndex on each
+    // successful test, which would skip every other matching node.
+    const testRegex = new RegExp(`^(?:${allMatches.join('|')})$`, 'i')
     
     const doc = new DOMParser().parseFromString(safeHtml, 'text/html')
     const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null)
@@ -499,6 +533,7 @@ export function ArticleReader() {
       if (node.nodeValue && regex.test(node.nodeValue)) {
         nodesToReplace.push(node as Text)
       }
+      regex.lastIndex = 0
     }
     
     for (const textNode of nodesToReplace) {
@@ -506,7 +541,7 @@ export function ArticleReader() {
       const frag = document.createDocumentFragment()
       const parts = textNode.nodeValue.split(regex)
       for (const part of parts) {
-        if (regex.test(part)) {
+        if (part && testRegex.test(part)) {
           const mark = document.createElement('mark')
           mark.style.cssText = 'background: yellow; color: #000; font-weight: 600; border-radius: 2px; padding: 0 2px;'
           mark.textContent = part 

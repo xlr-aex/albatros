@@ -64,10 +64,13 @@ export function ArticleList() {
   // ── Keyboard navigation ─────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInputFocused = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA'
+      const tag = document.activeElement?.tagName
+      const isInputFocused = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 
-      // Arrows always work to change post selection ("d'office")
-      if (e.key === 'ArrowDown' || (e.key === 'j' && !isInputFocused)) {
+      // Arrows always work to change post selection ("d'office") — but never
+      // steal the keys from a focused input/select/textarea.
+      if (isInputFocused) return
+      if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault()
         if (articles.length === 0) return
         if (!selectedArticle) {
@@ -80,7 +83,7 @@ export function ArticleList() {
           void openArticle(articles[idx + 1].id)
           rowVirtualizer.scrollToIndex(idx + 1, { align: 'auto' })
         }
-      } else if (e.key === 'ArrowUp' || (e.key === 'k' && !isInputFocused)) {
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault()
         if (!selectedArticle || articles.length === 0) return
         const idx = articles.findIndex(a => a.id === selectedArticle.id)
@@ -96,7 +99,9 @@ export function ArticleList() {
   }, [articles, selectedArticle, openArticle, rowVirtualizer])
 
   // ── Panel title ─────────────────────────────────────────────────────────────
-  const panelTitle = getPanelTitle(selection)
+  const feeds = useFeedStore(s => s.feeds)
+  const groups = useFeedStore(s => s.groups)
+  const panelTitle = getPanelTitle(selection, feeds, groups)
 
   return (
     <div className={styles.panel}>
@@ -192,14 +197,18 @@ export function ArticleList() {
     </div>
   )
 }
-function getPanelTitle(selection: ReturnType<typeof useFeedStore.getState>['selection']): string {
+function getPanelTitle(
+  selection: ReturnType<typeof useFeedStore.getState>['selection'],
+  feeds: ReturnType<typeof useFeedStore.getState>['feeds'],
+  groups: ReturnType<typeof useFeedStore.getState>['groups'],
+): string {
   switch (selection.type) {
     case 'all':     return 'All Items'
     case 'unread':  return 'Unread'
     case 'saved':   return 'Saved Posts'
     case 'today':   return 'Today'
-    case 'feed':    return useFeedStore.getState().feeds.find(f => f.id === selection.feedId)?.title ?? 'Feed'
-    case 'group':   return useFeedStore.getState().groups.find(g => g.id === selection.groupId)?.name ?? 'Folder'
+    case 'feed':    return feeds.find(f => f.id === selection.feedId)?.title ?? 'Feed'
+    case 'group':   return groups.find(g => g.id === selection.groupId)?.name ?? 'Folder'
     default: return 'Items'
   }
 }

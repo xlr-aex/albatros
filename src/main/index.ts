@@ -16,6 +16,7 @@ import { app, BrowserWindow, shell, session, ipcMain } from 'electron'
 
 // Suppress harmless Chromium DevTools Autofill errors that spam the terminal
 const originalStderrWrite = process.stderr.write.bind(process.stderr);
+/* eslint-disable @typescript-eslint/no-explicit-any */
 process.stderr.write = ((chunk: Uint8Array | string, encoding?: any, callback?: any) => {
   const str = chunk.toString();
   if (str.includes('Request Autofill.enable failed') || str.includes('Request Autofill.setAddresses failed')) {
@@ -24,10 +25,12 @@ process.stderr.write = ((chunk: Uint8Array | string, encoding?: any, callback?: 
   }
   return originalStderrWrite(chunk, encoding, callback);
 }) as any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import path from 'path'
 import { promises as fs } from 'fs'
 import { ElectronBlocker } from '@cliqz/adblocker-electron'
+import { adsAndTrackingLists } from '@cliqz/adblocker'
 import fetch from 'cross-fetch'
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -41,6 +44,7 @@ import { SearchService }   from './services/SearchService'
 import { SettingsService } from './services/SettingsService'
 import { OpmlService }     from './services/OpmlService'
 import { SummaryService }  from './services/SummaryService'
+import { LlmService }      from './services/LlmService'
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
 import { SyncEngine } from './sync/SyncEngine'
@@ -49,7 +53,7 @@ import { Scheduler }  from './sync/Scheduler'
 // ── IPC ───────────────────────────────────────────────────────────────────────
 import { registerFeedHandlers }     from './ipc/feeds'
 import { registerArticleHandlers }  from './ipc/articles'
-import { registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
+import { registerLlmHandlers, registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
 
 // ─── Window helper ────────────────────────────────────────────────────────────
 
@@ -82,7 +86,6 @@ function createWindow(): BrowserWindow {
   if (process.env['ELECTRON_RENDERER_URL']) {
     // Development: Vite dev server
     void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    win.webContents.openDevTools({ mode: 'detach' })
   } else {
     // Production: static build
     void win.loadFile(path.join(__dirname, '../renderer/index.html'))
@@ -101,9 +104,20 @@ async function bootstrap(): Promise<void> {
   //    Loads prebuilt EasyList + EasyPrivacy filter lists with disk caching.
   //    First run downloads lists (~2s), subsequent starts load from cache (<50ms).
   //    The engine auto-refreshes stale lists from the network when possible.
+  //
+  //    Cosmetic filters MUST stay disabled: their preload injects scriptlets
+  //    into every page, which violates Reddit's nonce-based CSP and leaves the
+  //    embedded webview permanently blank (ghostery/adblocker#4234). Network
+  //    filtering (onBeforeRequest) keeps blocking ads/trackers normally.
   try {
-    const enginePath = path.join(app.getPath('userData'), 'adblocker-engine.bin')
-    const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+    // NOTE - v2 cache name: the previous engine file was serialized with
+    // cosmetic filters enabled and would override the config below on load.
+    const enginePath = path.join(app.getPath('userData'), 'adblocker-engine-v2.bin')
+    void fs.unlink(path.join(app.getPath('userData'), 'adblocker-engine.bin')).catch(() => {})
+    const blocker = await ElectronBlocker.fromLists(fetch, adsAndTrackingLists, {
+      loadCosmeticFilters: false,
+      enableMutationObserver: false,
+    }, {
       path: enginePath,
       read: fs.readFile,
       write: fs.writeFile,
@@ -234,12 +248,13 @@ async function bootstrap(): Promise<void> {
   const articleService  = new ArticleService(db)
   const searchService   = new SearchService(db)
   const settingsService = new SettingsService(db)
+  const llmService      = new LlmService(settingsService)
   const opmlService     = new OpmlService(feedService)
 
   // ── 3. Engine ────────────────────────────────────────────────────────────
   const syncEngine = new SyncEngine(feedService, articleService, db)
   scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
-  summaryService = new SummaryService(db, settingsService, articleService)
+  summaryService = new SummaryService(db, articleService, llmService)
 
   syncEngine.onSyncComplete = () => {
     summaryService?.trigger()
@@ -249,6 +264,7 @@ async function bootstrap(): Promise<void> {
   registerFeedHandlers(feedService, opmlService, scheduler)
   registerArticleHandlers(articleService, searchService, feedService)
   registerSettingsHandlers(settingsService)
+  registerLlmHandlers(llmService)
   registerSyncHandlers(scheduler)
 
   ipcMain.handle('summary:status-get', () => {

@@ -30,7 +30,7 @@ All request/response methods return promises because they wrap `ipcRenderer.invo
 | `getForDigest(params)` | digest filter object | `Promise<Article[]>` | Retrieves bounded AI context by time/source. |
 | `get(id)` | `number` | `Promise<Article \| null>` | Returns the complete article body and state. |
 | `totalUnread()` | — | `Promise<number>` | Global unread aggregate. |
-| `mark(id, action, value)` | action is `read` or `saved` | `Promise<void>` | Updates the currently supported user state. `is_starred` exists in the schema but is not exposed by the current handler/UI. |
+| `mark(id, action, value)` | action is `read`, `starred` or `saved` | `Promise<void>` | Updates one user-state flag. `saved` also maintains the `read_later` table. |
 | `markAllRead(feedId?)` | optional `number` | `Promise<number>` | Marks all or one feed read and returns the affected count. |
 | `getGithubLinks()` | — | `Promise<GitHubLink[]>` | Extracts GitHub URLs from stored articles. |
 | `getRedditComments(url)` | Reddit post URL | `Promise<RedditCommentsResult>` | Fetches/caches post metadata and comments; invalid URLs return an empty result. |
@@ -43,7 +43,7 @@ All request/response methods return promises because they wrap `ipcRenderer.invo
 |---|---|---|
 | `query(q, limit?)` | text, optional maximum | `Promise<SearchResult[]>` |
 
-Search results contain article identifiers and highlighted snippets produced from SQLite FTS4. Treat snippet markup as untrusted until it has passed the renderer's controlled rendering path.
+Search results contain article identifiers and highlighted snippets produced from SQLite FTS4. Queries are compiled to bare prefix terms (`word*`, implicit AND), so partial words match. `%`, `_` and `\` are escaped before any `LIKE` fallback. Treat snippet markup as untrusted until it has passed the renderer's controlled rendering path.
 
 ## `window.api.sync`
 
@@ -74,8 +74,19 @@ Status payload:
 | `getAll()` | — | `Promise<Record<string, string>>` |
 | `get(key)` | typed `SettingKey` | `Promise<string \| null>` |
 | `set(key, value)` | typed key, string value | `Promise<void>` |
+| `setMany(values)` | partial key/value record | `Promise<void>` |
 
 Values are stored as text. The known keys cover theme/accent, font and panel dimensions, read behaviour, retention/default interval and AI provider/model/base URL/prompts.
+
+## `window.api.llm`
+
+| Method | Result | Notes |
+|---|---|---|
+| `getConfig()` | `Promise<AiConfig>` | Normalised provider settings (provider, chat URL, model). |
+| `listModels()` | `Promise<string[]>` | Queries the configured local provider for available models. |
+| `testConnection()` | `Promise<TestResult>` | Probes the configured endpoint and reports success/error. |
+
+The main process is the source of truth for AI configuration; the renderer never calls model endpoints directly.
 
 ## `window.api.opml`
 
@@ -89,10 +100,10 @@ Values are stored as text. The known keys cover theme/accent, font and panel dim
 | Method | Result | Notes |
 |---|---|---|
 | `getStatus()` | `Promise<{pending,total,isProcessing}>` | Current background-summary queue state. |
-| `trigger()` | `Promise/void` through IPC | Wakes the summariser if it is idle and running. |
+| `trigger()` | `Promise<void>` | Wakes the summariser if it is idle and running. |
 | `onStatus(callback)` | unsubscribe function | Receives queue progress broadcasts. |
 
-The summary worker processes recent (14 days) or unread articles, one at a time, and backs off when the local model is offline.
+The summary worker processes recent (14 days) or unread articles one at a time, backs off when the local model is offline, and permanently skips an article after three failed attempts so one malformed entry cannot stall the queue.
 
 ## `window.api.debug`
 

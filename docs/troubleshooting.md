@@ -49,6 +49,15 @@ Ordinary providers run concurrently, but Reddit is intentionally serialised and 
 
 Do not repeatedly click Sync: the scheduler coalesces overlapping full refreshes, and repeated provider traffic cannot make Reddit faster.
 
+## Embedded Reddit page is black or empty
+
+Reddit serves a JavaScript anti-bot challenge; the embedded webview normally solves it automatically within a few seconds. If the page stays black:
+
+1. Restart the app so the adblocker engine reloads with the current config.
+2. Check the main-process console for `Refused to execute inline script` errors sourced from `@cliqz/adblocker-electron` — this means cosmetic filtering was re-enabled, which breaks Reddit's strict CSP. The engine config in `src/main/index.ts` must keep `loadCosmeticFilters: false`.
+3. Verify the engine cache file is `adblocker-engine-v2.bin`; an older cache restores the old config. Delete `adblocker-engine*.bin` in the app-data directory and restart to force a fresh download.
+4. Use **↗ Browser** as an immediate fallback.
+
 ## Reddit feeds show HTTP 429 or remain empty
 
 Albatros uses the persistent Chromium session for Reddit RSS and honours provider cooldowns. If 429 persists:

@@ -80,7 +80,7 @@ If parsed content is empty or unusably short, the engine may try the correspondi
 
 HTTP 429 is not retried immediately. `Retry-After` is honoured when present; otherwise a bounded fallback delay is used. Rate limiting produces a `deferred` result rather than incrementing the permanent feed error counter.
 
-Other persistent failures increment `error_count` and schedule exponential backoff. After ten consecutive failures, the feed is disabled to stop an invalid subscription from being retried forever.
+Other persistent failures increment `error_count` — atomically in SQL (`UPDATE … RETURNING`) so a scheduled tick and a manual refresh racing on the same feed cannot lose an increment — and schedule exponential backoff. After ten consecutive failures, the feed is disabled to stop an invalid subscription from being retried forever.
 
 ## Adaptive schedule
 
@@ -97,7 +97,7 @@ The starting interval is normally 15 minutes and remains bounded between five mi
 
 ## Persistence
 
-`ArticleService.upsertMany()` performs a prepared batch transaction. `(feed_id, guid)` is unique, so existing articles are updated without duplicating reading-state rows. `better-sqlite3` writes synchronously; the legacy `persistDatabase()` call remains a no-op for compatibility with the former sql.js implementation.
+`ArticleService.upsertMany()` performs a prepared batch transaction. `(feed_id, guid)` is unique, so existing articles are updated without duplicating reading-state rows. The update branch refreshes content fields and fills previously missing metadata (`url`, `author`, `enclosure_url`, `published_at`) via `COALESCE`, so a feed that initially published incomplete entries is corrected on later syncs. `articlesUpdated` counts only rows whose UPDATE actually changed a value — rows skipped for a missing GUID or identical content are not counted. `better-sqlite3` writes synchronously; the legacy `persistDatabase()` call remains a no-op for compatibility with the former sql.js implementation.
 
 ## UI events
 

@@ -19,6 +19,13 @@ export function ManageFeedsModal({ onClose }: Props) {
   const [deletedFeeds, setDeletedFeeds] = useState<Feed[]>([])
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Clear the undo timer when the modal unmounts to avoid setState after unmount
+  React.useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    }
+  }, [])
+
   const toggle = (id: number) => {
     const next = new Set(selected)
     if (next.has(id)) next.delete(id)

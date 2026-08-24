@@ -65,7 +65,7 @@ Raw HTML is deliberately stored unsanitised. DOMPurify runs in the reader immedi
 
 ### `articles_fts`
 
-An FTS4 virtual table indexes title, plain content and author. Triggers mirror insert, update and delete operations. Search code builds conservative MATCH expressions and can fall back from all-term to broader matching when needed.
+An FTS4 virtual table indexes title, plain content and author. Triggers mirror insert, update and delete operations. Search code compiles user input to bare prefix terms (`word*`, implicit AND) — a quoted term followed by `*` is silently treated as an exact match by FTS4, so quoted prefixes must never be emitted — and can fall back from all-term to broader matching when needed.
 
 ### `article_tags` and `read_later`
 
@@ -96,7 +96,7 @@ The schema includes indexes for:
 - articles waiting for summaries;
 - tags and per-feed sync history.
 
-Article lists should remain cursor-based. Avoid large `OFFSET` pagination because it becomes increasingly expensive as the library grows.
+Article lists sort and paginate on `COALESCE(published_at, created_at)` so entries without a parseable feed date stay reachable: `NULL` timestamps can never satisfy a `<` cursor comparison and would otherwise disappear after page one. Lists should remain cursor-based; avoid large `OFFSET` pagination because it becomes increasingly expensive as the library grows.
 
 ## Triggers
 

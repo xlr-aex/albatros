@@ -6,26 +6,33 @@ import styles from './AiDigestView.module.css'
 
 // ─── Helpers: Streams ─────────────────────────────────────────────────────────
 
+interface AiConfig {
+  provider: 'lmstudio' | 'ollama'
+  baseUrl: string
+  model: string
+  modelsUrl: string
+  chatUrl: string
+  systemPrompt: string
+  summaryPrompt: string
+  newsPrompt: string
+}
+
 async function loadAiConfig() {
-  const all = await window.api.settings.getAll()
-  const provider = (all['ai_provider'] as 'lmstudio' | 'ollama') ?? 'lmstudio'
-  const defaultUrl = provider === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-  let baseUrl = (all['ai_base_url'] || defaultUrl).trim().replace(/\/$/, '')
-  if (provider === 'lmstudio' && baseUrl.endsWith('/v1')) {
-    baseUrl = baseUrl.slice(0, -3).trim()
-  }
+  const [config, all] = await Promise.all([
+    window.api.llm.getConfig(),
+    window.api.settings.getAll(),
+  ])
   return {
-    provider,
-    baseUrl,
-    model:   all['ai_model'] || (provider === 'ollama' ? 'llama3' : 'local-model'),
+    ...config,
     systemPrompt: 'Tu es Albatros AI, un assistant de veille analytique. Tu réponds en français de manière extrêmement rigoureuse et concise.',
     summaryPrompt: String(all['ai_chatbot_summary_prompt'] || ""),
     newsPrompt: String(all['ai_chatbot_news_prompt'] || ""),
-  }
+  } as AiConfig
 }
 
-async function* streamLmStudio(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
-  const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
+async function* streamLmStudio(config: AiConfig, messages: {role: string, content: string}[], signal: AbortSignal) {
+  window.api.debug.log(`[AiDigest] Request: provider=${config.provider} url=${config.chatUrl} model=${config.model}`)
+  const res = await fetch(config.chatUrl, {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json' },
@@ -68,8 +75,9 @@ async function* streamLmStudio(config: { baseUrl: string, model: string, systemP
   }
 }
 
-async function* streamOllama(config: { baseUrl: string, model: string, systemPrompt: string, provider: string }, messages: {role: string, content: string}[], signal: AbortSignal) {
-  const res = await fetch(`${config.baseUrl}/api/chat`, {
+async function* streamOllama(config: AiConfig, messages: {role: string, content: string}[], signal: AbortSignal) {
+  window.api.debug.log(`[AiDigest] Request: provider=${config.provider} url=${config.chatUrl} model=${config.model}`)
+  const res = await fetch(config.chatUrl, {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json' },
@@ -104,25 +112,6 @@ async function* streamOllama(config: { baseUrl: string, model: string, systemPro
       } catch { /* ignore */ }
     }
   }
-}
-
-async function getLlmCompletion(
-  cfg: { provider: string; baseUrl: string; model: string; systemPrompt: string },
-  messages: { role: string; content: string }[],
-  signal: AbortSignal
-): Promise<string> {
-  let streamFn
-  if (cfg.provider === 'ollama') {
-    streamFn = streamOllama(cfg, messages, signal)
-  } else {
-    streamFn = streamLmStudio(cfg, messages, signal)
-  }
-  let result = ''
-  for await (const chunk of streamFn) {
-    if (signal.aborted) break
-    result += chunk
-  }
-  return result
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -191,6 +180,7 @@ export function AiDigestView() {
   }, [])
 
   // Clear chat if knowledge base filters change
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleFilterChange = (setter: (val: any) => void, val: any) => {
     if (messages.length > 0) {
       if (!window.confirm("Changer les filtres effacera la conversation en cours. Continuer ?")) {
@@ -241,13 +231,9 @@ export function AiDigestView() {
       
       // Auto-fetch model if needed
       if (!cfg.model || cfg.model === 'local-model') {
-        const endpoint = cfg.provider === 'ollama' ? `${cfg.baseUrl}/api/tags` : `${cfg.baseUrl}/v1/models`
-        const mRes = await fetch(endpoint, { signal: AbortSignal.timeout(5000) }).catch(()=>null)
-        if (mRes && mRes.ok) {
-          const mData = await mRes.json()
-          const first = cfg.provider === 'ollama' ? mData.models?.[0]?.name : mData.data?.[0]?.id
-          if (first) cfg.model = first
-        }
+        const models: string[] = await window.api.llm.listModels()
+        if (!models[0]) throw new Error(`Aucun modèle disponible sur ${cfg.modelsUrl}`)
+        cfg.model = models[0]
       }
 
       // Build parameters for SQLite Knowledge Base

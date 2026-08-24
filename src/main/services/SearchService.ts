@@ -34,14 +34,15 @@ export class SearchService {
     const trimmed = query.trim()
     if (!trimmed) return []
 
-    // Map strict prefixes for FTS text indexing. 
-    // Stripping unbalanced quotes and weird FTS symbols to prevent crashes
+    // Map strict prefixes for FTS text indexing.
+    // Stripping unbalanced quotes and weird FTS symbols to prevent crashes.
+    // Bare prefix terms are used because FTS4 ignores a trailing * on a quoted term.
     const safeQuery = trimmed.replace(/["*()]/g, '')
-    const words = safeQuery.split(/\s+/).filter(Boolean).map(w => `"${w}"*`)
+    const words = safeQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`)
     if (!words.length) return []
-    
+
     const matchQuery = words.join(' ')
-    const likeQuery = `%${safeQuery}%`
+    const likeQuery = `%${safeQuery.replace(/[%_\\]/g, '\\$&')}%`
 
     try {
       const stmt = this.db.prepare(`
@@ -52,7 +53,7 @@ export class SearchService {
            a.title, a.author, a.excerpt, a.thumbnail_url,
           a.published_at, a.is_read, a.is_starred, a.is_saved,
           snippet(articles_fts, '[[[', ']]]', '…', 1, 15) AS snippet,
-          (CASE WHEN a.title LIKE ? OR a.excerpt LIKE ? THEN -1 ELSE 1 END) AS exact_match,
+          (CASE WHEN a.title LIKE ? ESCAPE '\\' OR a.excerpt LIKE ? ESCAPE '\\' THEN -1 ELSE 1 END) AS exact_match,
           0 AS rank
         FROM articles_fts fts
         JOIN articles a ON a.id = fts.rowid

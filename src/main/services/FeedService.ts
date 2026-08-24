@@ -214,6 +214,19 @@ export class FeedService {
     `).run(nextFetchAt, id)
   }
 
+  /**
+   * Atomically increments the error counter and returns the new value.
+   * Reading the count in SQL avoids lost updates when a scheduled sync and a
+   * manual refresh race on the same failing feed.
+   */
+  incrementErrorCount(id: number): number {
+    const row = this.db.prepare(`
+      UPDATE feeds SET error_count = COALESCE(error_count, 0) + 1 WHERE id = ?
+      RETURNING error_count
+    `).get(id) as { error_count: number } | undefined
+    return row?.error_count ?? 1
+  }
+
   /** Clears stale provider-throttling warnings while preserving genuine feed errors. */
   clearTransientRateLimitErrors(): void {
     this.db.prepare(`

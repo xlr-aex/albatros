@@ -349,7 +349,9 @@ export class SyncEngine {
     const message = lastError?.message || 'Sync failed'
     console.error(`[SyncEngine] Persistent error for feed ${feed.id}:`, message)
     
-    const newErrorCount = (feed.error_count ?? 0) + 1
+    // Atomic increment — a manual refresh racing a scheduler tick must not
+    // compute the same base twice or the counter never reaches the threshold.
+    const newErrorCount = this.feedService.incrementErrorCount(feed.id)
     const backoff = Math.min(INTERVAL.DEFAULT * Math.pow(2, newErrorCount), INTERVAL.BACKOFF_MAX)
     const nextFetch = Math.floor(Date.now() / 1000) + backoff
 

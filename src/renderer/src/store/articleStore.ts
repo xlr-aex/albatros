@@ -18,6 +18,8 @@ export interface ArticleSummary {
   author: string | null
   excerpt: string | null
   published_at: number | null
+  /** Fallback sort key used for pagination when published_at is null */
+  created_at?: number | null
   is_read: boolean
   is_saved: boolean
   thumbnail_url: string | null
@@ -80,6 +82,8 @@ interface ArticleStore {
 // ─── Internal pagination state (not exposed in store interface) ───────────────
 
 let _lastParams: Parameters<ArticleStore['loadArticles']>[0] = {}
+/** Id of the most recent openArticle request — stale fetches are discarded. */
+let _pendingArticleId: number | null = null
 
 export const useArticleStore = create<ArticleStore>((set, get) => ({
   articles:         [],
@@ -131,7 +135,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     set({ isLoadingList: true })
     const more = await window.api.articles.list({
       ..._lastParams,
-      cursor_published_at: last.published_at ?? undefined,
+      // Backend sorts by COALESCE(published_at, created_at), so the cursor
+      // must use the same coalesced value or rows with null dates are lost.
+      cursor_published_at: last.published_at ?? last.created_at ?? undefined,
       cursor_id:           last.id,
       limit:               50,
     })
@@ -171,6 +177,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     const { prefetchedContent } = get()
     
     // 1. Check pre-fetch cache first (Instant Load Path)
+    _pendingArticleId = id
     const cached = prefetchedContent.get(id)
     if (cached) {
       set({ selectedArticle: cached, isLoadingArticle: false })
@@ -203,13 +210,11 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       article = null
     }
     
-    // 5. Ensure we don't overwrite if the user switched articles during the fetch
+    // 5. Discard the result if the user opened another article meanwhile —
+    //    only the latest request may touch the loading flag or the pane.
+    if (_pendingArticleId !== id) return
     const current = get().selectedArticle
-    if (current && current.id === id) {
-      set({ selectedArticle: article ?? current, isLoadingArticle: false })
-    } else {
-      set({ isLoadingArticle: false })
-    }
+    set({ selectedArticle: article ?? current, isLoadingArticle: false })
   },
 
   closeArticle: () => set({ selectedArticle: null }),

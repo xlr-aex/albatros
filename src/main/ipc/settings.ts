@@ -5,6 +5,7 @@
 
 import { ipcMain } from 'electron'
 import type { SettingsService, SettingKey } from '../services/SettingsService'
+import type { LlmService } from '../services/LlmService'
 import type { Scheduler } from '../sync/Scheduler'
 
 // ─── Settings Handlers ────────────────────────────────────────────────────────
@@ -24,6 +25,16 @@ export function registerSettingsHandlers(settings: SettingsService): void {
   ipcMain.handle('settings:set', (_event, key: SettingKey, value: string) => {
     settings.set(key, value)
   })
+
+  ipcMain.handle('settings:set-many', (_event, values: Partial<Record<SettingKey, string>>) => {
+    settings.setMany(values)
+  })
+}
+
+export function registerLlmHandlers(llm: LlmService): void {
+  ipcMain.handle('llm:get-config', () => llm.getConfig())
+  ipcMain.handle('llm:list-models', () => llm.listModels())
+  ipcMain.handle('llm:test-connection', () => llm.testConnection())
 }
 
 // ─── Sync Handlers ────────────────────────────────────────────────────────────

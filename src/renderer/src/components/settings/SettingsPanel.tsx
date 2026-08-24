@@ -4,7 +4,7 @@
  * Axes 3 (tabs), 3 (no free color picker), 3 (auto-resize prompts), 3 (reset confirmation).
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { applyAccentColor, ACCENT_COLORS } from '../../utils/theme'
 import styles from './SettingsPanel.module.css'
@@ -55,10 +55,10 @@ const TABS: { id: TabId; icon: string; label: string }[] = [
 
 /** Parse an error to produce a diagnostic message + hint */
 function parseConnectionError(msg: string): { title: string; hint: string } {
-  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ECONNREFUSED')) {
     return { title: 'Connexion refusée', hint: 'Vérifiez que LM Studio / Ollama est bien lancé et accessible sur l\'URL configurée.' }
   }
-  if (msg.includes('timeout') || msg.includes('AbortError')) {
+  if (msg.includes('timeout') || msg.includes('AbortError') || msg.includes('ETIMEDOUT')) {
     return { title: 'Délai d\'attente dépassé', hint: 'Le serveur ne répond pas. Vérifiez le port et que le modèle est chargé.' }
   }
   if (msg.includes('HTTP 4') || msg.includes('HTTP 5')) {
@@ -73,8 +73,10 @@ export function SettingsPanel({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('appearance')
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [aiTestMsg, setAiTestMsg] = useState('')
+  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [resetConfirm, setResetConfirm] = useState<string | null>(null)
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve())
 
   useEffect(() => {
     async function load() {
@@ -85,19 +87,29 @@ export function SettingsPanel({ onClose }: Props) {
     void load()
   }, [])
 
+  const persist = useCallback((values: Partial<Settings>) => {
+    saveQueueRef.current = saveQueueRef.current
+      .catch(() => undefined)
+      .then(() => window.api.settings.setMany(values))
+    return saveQueueRef.current
+  }, [])
+
   const update = useCallback((key: keyof Settings, value: string) => {
+    const providerDefaultUrl = key === 'ai_provider'
+      ? (value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234')
+      : null
     setSettings(s => {
       const next = { ...s, [key]: value }
-      if (key === 'ai_provider') {
-        next.ai_base_url = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-      }
+      if (providerDefaultUrl) next.ai_base_url = providerDefaultUrl
       return next
     })
     if (key === 'ai_provider') {
       const defaultUrl = value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:1234'
-      window.api.settings.set('ai_base_url', defaultUrl).catch(console.error)
+      void persist({ ai_provider: value, ai_base_url: defaultUrl }).catch(console.error)
+      setAvailableModels([])
       setAiTestStatus('idle'); setAiTestMsg('')
     } else if (key === 'ai_base_url') {
+      setAvailableModels([])
       setAiTestStatus('idle'); setAiTestMsg('')
     }
     if (key === 'theme') {
@@ -109,32 +121,34 @@ export function SettingsPanel({ onClose }: Props) {
     } else if (key === 'accent_color') {
       applyAccentColor(value)
     }
-    window.api.settings.set(key, value).catch(console.error)
-  }, [])
+    if (key !== 'ai_provider') void persist({ [key]: value }).catch(console.error)
+  }, [persist])
 
   const testConnection = useCallback(async () => {
     setAiTestStatus('testing'); setAiTestMsg('')
-    let baseUrl = settings.ai_base_url.replace(/\/$/, '')
-    if (settings.ai_provider === 'lmstudio' && baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3)
-    const provider = settings.ai_provider
     try {
-      const endpoint = provider === 'ollama' ? `${baseUrl}/api/tags` : `${baseUrl}/v1/models`
-      await new Promise(r => setTimeout(r, 400))
-      const res = await fetch(endpoint, { signal: AbortSignal.timeout(5000) })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      const models: string[] = provider === 'ollama'
-        ? (data.models ?? []).map((m: { name: string }) => m.name)
-        : (data.data ?? []).map((m: { id: string }) => m.id)
+      // Persist one coherent snapshot first; the main process then tests exactly
+      // the same configuration that SummaryService reads from SQLite.
+      await persist({
+        ai_provider: settings.ai_provider,
+        ai_base_url: settings.ai_base_url,
+        ai_model: settings.ai_model,
+      })
+      const result = await window.api.llm.testConnection()
+      const models: string[] = result.models
+      setAvailableModels(models)
       const modelHint = models.length > 0 ? `Modèles disponibles : ${models.slice(0, 5).join(', ')}` : 'Connecté !'
       setAiTestMsg(modelHint)
       setAiTestStatus('ok')
-      if (!settings.ai_model && models.length > 0) update('ai_model', models[0])
+      if ((!settings.ai_model || settings.ai_model === 'local-model') && models.length > 0) {
+        setSettings(current => ({ ...current, ai_model: models[0], ai_base_url: result.config.baseUrl }))
+        await persist({ ai_model: models[0], ai_base_url: result.config.baseUrl })
+      }
     } catch (err: unknown) {
       setAiTestMsg((err as Error).message ?? String(err))
       setAiTestStatus('error')
     }
-  }, [settings.ai_base_url, settings.ai_provider, settings.ai_model, update])
+  }, [settings.ai_base_url, settings.ai_provider, settings.ai_model, persist])
 
   const handleReset = (key: keyof Settings) => {
     if (resetConfirm === key) {
@@ -384,11 +398,15 @@ export function SettingsPanel({ onClose }: Props) {
                     <input
                       type="text" className={styles.input}
                       value={settings.ai_model}
-                      placeholder={settings.ai_provider === 'ollama' ? 'llama3' : 'local-model'}
+                      list="settings-ai-models"
+                      placeholder={settings.ai_provider === 'ollama' ? 'llama3' : 'Détecté automatiquement'}
                       onChange={e => update('ai_model', e.target.value)}
                       id="settings-ai-model"
                       style={{ width: 200, minWidth: 160, textAlign: 'left' }}
                     />
+                    <datalist id="settings-ai-models">
+                      {availableModels.map(model => <option value={model} key={model} />)}
+                    </datalist>
                   </div>
 
                   {/* Test connection with diagnostic error */}

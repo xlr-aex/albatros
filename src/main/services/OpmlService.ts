@@ -170,13 +170,15 @@ export class OpmlService {
       const xmlUrl  = (o['@_xmlUrl'] as string | undefined) ?? ''
       const title   = (o['@_title']  as string | undefined) ?? (o['@_text'] as string | undefined) ?? null
       const htmlUrl = (o['@_htmlUrl'] as string | undefined) ?? null
-      const type    = (o['@_type']   as string | undefined) ?? ''
 
-      if (xmlUrl && (type === 'rss' || type === 'atom')) {
+      // Any outline carrying an xmlUrl is a feed — many exporters omit the
+      // `type` attribute, so it must not be required.
+      if (xmlUrl) {
         result.push({ title, xmlUrl, htmlUrl, category })
-      } else if (o['outline']) {
-        // This is a category outline — descend with the group name as category
-        const groupName = title ?? null
+      }
+      if (o['outline']) {
+        // Recurse into children even when this node is itself a feed
+        const groupName = xmlUrl ? category : (title ?? null)
         result.push(...this.extractFeeds(o['outline'], groupName))
       }
     }

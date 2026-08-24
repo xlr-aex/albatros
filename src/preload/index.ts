@@ -79,6 +79,14 @@ const api = {
     getAll: ()                                              => ipcRenderer.invoke('settings:get-all'),
     get:    (key: SettingKey)                               => ipcRenderer.invoke('settings:get', key),
     set:    (key: SettingKey, value: string)                => ipcRenderer.invoke('settings:set', key, value),
+    setMany: (values: Partial<Record<SettingKey, string>>)  => ipcRenderer.invoke('settings:set-many', values),
+  },
+
+  // ── Local LLM (main process is the network/config source of truth) ─────
+  llm: {
+    getConfig: ()                                           => ipcRenderer.invoke('llm:get-config'),
+    listModels: ()                                          => ipcRenderer.invoke('llm:list-models'),
+    testConnection: ()                                      => ipcRenderer.invoke('llm:test-connection'),
   },
 
   // ── OPML ─────────────────────────────────────────────────────────────────

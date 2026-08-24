@@ -65,6 +65,17 @@ export class SettingsService {
                                       updated_at = excluded.updated_at
     `)
     stmt.run(key, value)
+    if (key === 'ai_base_url' || key === 'ai_provider' || key === 'ai_model') {
+      console.log(`[SettingsService] Saved ${key}=${value}`)
+    }
+  }
+
+  /** Atomically saves a settings snapshot, preserving renderer edit order. */
+  setMany(values: Partial<Record<SettingKey, string>>): void {
+    const save = this.db.transaction((entries: [SettingKey, string][]) => {
+      for (const [key, value] of entries) this.set(key, value)
+    })
+    save(Object.entries(values) as [SettingKey, string][])
   }
 
   // ── Typed convenience getters ─────────────────────────────────────────────

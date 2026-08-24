@@ -28,6 +28,7 @@ export function registerArticleHandlers(
     return articleService.list(params)
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ipcMain.handle('articles:getForDigest', (_event, params: any) => {
     return articleService.getForDigest(params)
   })
@@ -46,10 +47,11 @@ export function registerArticleHandlers(
    * Sets the read / starred / saved state of a single article.
    * `action` is one of: 'read' | 'starred' | 'saved'
    */
-  ipcMain.handle('articles:mark', (_event, id: number, action: 'read' | 'saved', value: boolean) => {
+  ipcMain.handle('articles:mark', (_event, id: number, action: 'read' | 'starred' | 'saved', value: boolean) => {
     switch (action) {
-      case 'read':    articleService.setRead(id, value);    break
-      case 'saved':   articleService.setSaved(id, value);   break
+      case 'read':     articleService.setRead(id, value);    break
+      case 'starred':  articleService.setStarred(id, value); break
+      case 'saved':    articleService.setSaved(id, value);   break
       default: throw new Error(`Unknown action: ${action}`)
     }
   })

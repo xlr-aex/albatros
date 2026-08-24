@@ -36,7 +36,7 @@ The renderer is a React 19 application. Zustand stores coordinate feeds, article
 
 ### Persistent browser partition
 
-Embedded pages use the Electron partition `persist:adblock`. It has a prebuilt ad/tracker blocker and browser-compatible request handling for Reddit. The feed HTTP client also uses this session for Reddit RSS requests because anonymous Node networking is aggressively rate-limited.
+Embedded pages use the Electron partition `persist:adblock`. It runs a prebuilt ad/tracker blocker with **network filtering only** — cosmetic filtering must stay disabled because its page injections violate Reddit's strict CSP and blank the embedded webview — plus browser-compatible request handling for Reddit. The feed HTTP client also uses this session for Reddit RSS requests because anonymous Node networking is aggressively rate-limited. See [Media and Reddit](docs/media-and-reddit.md) for the exact constraints.
 
 ## Principal data flow
 
@@ -78,6 +78,7 @@ Selecting an article follows the reverse read path: React invokes `window.api.ar
 - The renderer has `contextIsolation` enabled and `nodeIntegration` disabled.
 - Article HTML is stored raw and sanitised at render time. Code must never render `content_html` without DOMPurify.
 - Embedded web content is less trusted than the application UI and is isolated in a dedicated partition; header rewriting for Reddit is deliberately scoped to Reddit/Reddit media domains.
+- Electron registers a single listener per `webRequest` event: any new `onHeadersReceived`/`onBeforeRequest` registration on `persist:adblock` silently replaces the adblocker's (or the Reddit bypass's) handler. Check `src/main/index.ts` before adding one.
 - `webSecurity` is currently disabled on the main application window to support local AI/browser workflows. Contributors should not treat the renderer as a safe place for secrets.
 - AI provider URLs are user-configured local endpoints. Albatros does not authenticate, host or proxy them.
 

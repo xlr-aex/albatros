@@ -124,6 +124,7 @@ export async function fetchFeed(
 
   let response: Response
   try {
+    // eslint-disable-next-line no-undef
     const options: RequestInit = {
       method:  'GET',
       headers,

@@ -48,12 +48,13 @@ npm run dev
 Before handing off a change:
 
 ```bash
+npm run lint
 npm run build:check
 npm run test:unit
 npm run build
 ```
 
-Run lint separately when working on broader refactors. Existing unrelated lint/whitespace issues should not be mechanically rewritten as part of a focused fix.
+All four commands must pass with zero errors and zero warnings. Existing unrelated issues should not be mechanically rewritten as part of a focused fix, but new code may not introduce new lint findings.
 
 ## Native dependency recovery
 
@@ -114,10 +115,11 @@ Network rate limiting and Electron session behaviour require an integration or m
 3. Confirm the Sync icon rotates until completion and flashes green three times.
 4. Open an article with a large image and resize the reading pane.
 5. Open a Reddit image post and a Reddit-hosted video post.
-6. Confirm cached articles remain visible when a provider is offline/deferred.
-7. Search for a multi-word query and navigate to a result.
-8. If AI is enabled, test provider detection and one streamed digest.
-9. Restart the app and confirm database state persists.
+6. Open a Reddit link with **⧉ In App** and confirm the embedded page renders (not black) after the anti-bot challenge.
+7. Confirm cached articles remain visible when a provider is offline/deferred.
+8. Search for a multi-word query and navigate to a result.
+9. If AI is enabled, test provider detection and one streamed digest.
+10. Restart the app and confirm database state persists.
 
 ## Generated and local files
 

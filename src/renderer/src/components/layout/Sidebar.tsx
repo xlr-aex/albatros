@@ -258,15 +258,23 @@ export function Sidebar() {
   const [isSearchFocused, setIsSearchFocused] = useState(false)
 
   // Real-time debounced article search
+  const lastSearchRef = React.useRef<string | null>(null)
   React.useEffect(() => {
     const q = searchQuery.trim()
     const timer = setTimeout(() => {
       if (q) {
+        // Skip when the same query already ran — the selection change below
+        // would otherwise re-trigger this effect and run the search twice.
+        if (lastSearchRef.current === q && selection.type === 'search') return
+        lastSearchRef.current = q
         setSelection({ type: 'search' })
         void loadArticles({ searchQuery: q })
-      } else if (searchQuery === '' && selection.type === 'search') {
-        setSelection({ type: 'all' })
-        void loadArticles({})
+      } else {
+        lastSearchRef.current = null
+        if (selection.type === 'search') {
+          setSelection({ type: 'all' })
+          void loadArticles({})
+        }
       }
     }, 300)
     return () => clearTimeout(timer)
