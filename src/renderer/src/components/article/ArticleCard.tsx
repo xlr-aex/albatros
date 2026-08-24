@@ -32,7 +32,7 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
     setAvatarError(false)
   }, [thumbnail_url, article.feed_favicon])
 
-  const showFeedFavicon = article.feed_favicon && ['all', 'unread', 'saved', 'today', 'group', 'search'].includes(selection.type as string)
+  const showFeedFavicon = article.feed_favicon && ['all', 'unread', 'saved', 'today', 'group', 'search', 'feed'].includes(selection.type as string)
 
   const ariaLabel = [
     title ? unescapeHtml(title) : 'Untitled',
@@ -68,10 +68,7 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
         <div className={styles.headerMeta}>
           <span className={styles.feedName}>{feed_title ?? 'Unknown Feed'}</span>
           {published_at && (
-            <span className={styles.time}>
-              {formatRelativeTime(published_at)}
-              {!is_read ? ' · new' : ''}
-            </span>
+            <span className={styles.time}>{formatRelativeTime(published_at)}</span>
           )}
         </div>
         {/* Unread indicator dot */}

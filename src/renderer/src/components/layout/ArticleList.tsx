@@ -19,10 +19,14 @@ export function ArticleList() {
   const [isCompact, setIsCompact] = useState(false)
 
   // ── Virtualizer ────────────────────────────────────────────────────────────
+  // NOTE: never call rowVirtualizer.measure() on articles changes — opening a
+  // post flips is_read, which replaces the array identity. Resetting cached
+  // measurements there makes rows jump to estimated offsets (overlapping posts)
+  // until each row is re-measured. measureElement + ResizeObserver handle it.
   const rowVirtualizer = useVirtualizer({
     count:          hasMore ? articles.length + 1 : articles.length,
     getScrollElement: () => parentRef.current,
-    estimateSize:   () => 380, // Estimated card height in px (media card)
+    estimateSize:   () => (isCompact ? 64 : 380), // Estimated card height in px
     overscan:       5,
   })
 

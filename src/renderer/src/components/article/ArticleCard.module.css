@@ -4,6 +4,8 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  align-items: stretch;      /* Override global button centering */
+  justify-content: flex-start;
   width: calc(100% - var(--space-4));
   margin: var(--space-2) var(--space-2);
   padding: var(--space-3) 0 var(--space-3);
@@ -17,7 +19,9 @@
 .selected    {
   background: color-mix(in srgb, var(--brand-500), transparent 92%) !important;
 }
-.read .title { color: var(--text-secondary); font-weight: var(--weight-medium); }
+/* Read posts: colour shift only — keep weight identical to avoid text reflow,
+   which would resize rows mid-scroll and desynchronise the virtualizer. */
+.read .title { color: var(--text-secondary); }
 
 /* ── Post header : avatar + feed name + time ────────────────────────────────── */
 .postHeader {
