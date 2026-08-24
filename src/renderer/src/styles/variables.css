@@ -3,6 +3,9 @@
    =============================================================================
    All colours, spacing, typography, and effect values are defined here.
    Components reference only these tokens — never hardcoded values.
+
+   "Feed" edition — Instagram-inspired: deep near-black surfaces, separation
+   by space instead of borders, content first.
    ============================================================================= */
 
 :root {
@@ -11,32 +14,29 @@
   --brand-400: #60a5fa;
   --brand-600: #2563eb;
 
-  /* ── Dark theme surfaces ────────────────────────────────────────────────── */
-  --bg-base:      #0f1117; /* App background */
-  --bg-sidebar:   #161b27; /* Sidebar panel */
-  --bg-panel:     #1a2032; /* Article list panel */
-  --bg-surface:   #212840; /* Cards, inputs */
-  --bg-elevated:  #2a3357; /* Hover states, tooltips */
-  --bg-overlay:   rgba(10, 12, 20, 0.85); /* Modal overlay */
+  /* ── Dark theme surfaces (near-black, borderless design) ────────────────── */
+  --bg-base:      #000000; /* App background — true black for OLED-style depth   */
+  --bg-sidebar:   #050507; /* Sidebar panel                                      */
+  --bg-panel:     #0a0a0d; /* Article list panel                                 */
+  --bg-surface:   #141418; /* Cards, inputs                                      */
+  --bg-elevated:  #1c1c22; /* Hover states, tooltips                             */
+  --bg-overlay:   rgba(0, 0, 0, 0.75); /* Modal overlay                          */
 
   /* ── Text ───────────────────────────────────────────────────────────────── */
-  /* Slightly tinted white (not pure) reduces eye strain in prolonged dark-mode reading */
-  --text-primary:   #cdd2e8;  /* ~8.4:1 contrast on bg-base — WCAG AA+ */
-  --text-secondary: #7d8aa8;
-  --text-muted:     #4d566e;
-  --text-inverse:   #0f1117;
+  --text-primary:   #f5f5f7;  /* High contrast on black — WCAG AAA              */
+  --text-secondary: #a1a1aa;
+  --text-muted:     #52525b;
+  --text-inverse:   #000000;
 
   /* ── Borders ────────────────────────────────────────────────────────────── */
-  /* Slightly more visible separators to anchor the three-column layout */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-light:  rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-light:  rgba(255, 255, 255, 0.12);
   --border-focus:  var(--brand-500);
-  --border-column: rgba(255, 255, 255, 0.10); /* Column dividers */
+  --border-column: rgba(255, 255, 255, 0.05); /* Column dividers — barely there */
 
   /* ── Semantic colours ───────────────────────────────────────────────────── */
   --color-unread:   var(--brand-400);
-  /* Desaturated badge: muted dot on dark bg — same meaning, less visual aggression */
-  --color-unread-badge-bg:   rgba(96, 165, 250, 0.18);
+  --color-unread-badge-bg:   rgba(96, 165, 250, 0.15);
   --color-unread-badge-text: #7eb3f8;
   --color-saved:    #34d399;   /* Emerald */
   --color-error:    #f87171;   /* Red */
@@ -74,20 +74,20 @@
 
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   --sidebar-width:      260px;
-  --article-list-width: 380px;
-  --toolbar-height:     68px;
+  --article-list-width: 420px;
+  --toolbar-height:     60px;
   --resize-handle-w:    4px;
 
   /* ── Border radius ──────────────────────────────────────────────────────── */
-  --radius-sm:   4px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
   --radius-full: 9999px;
 
   /* ── Shadows ────────────────────────────────────────────────────────────── */
-  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.55);
+  --shadow-lg:  0 12px 40px rgba(0, 0, 0, 0.65);
 
   /* ── Animation ───────────────────────────────────────────────────────────── */
   --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
@@ -107,21 +107,21 @@
 
 /* Light theme overrides */
 [data-theme='light'] {
-  --bg-base:      #f4f6fb;
-  --bg-sidebar:   #edf0f8;
-  --bg-panel:     #f9fafd;
-  --bg-surface:   #ffffff;
-  --bg-elevated:  #e8ecf5;
-  --bg-overlay:   rgba(200, 210, 230, 0.7);
+  --bg-base:      #fafafa;
+  --bg-sidebar:   #ffffff;
+  --bg-panel:     #ffffff;
+  --bg-surface:   #f4f4f5;
+  --bg-elevated:  #e4e4e7;
+  --bg-overlay:   rgba(0, 0, 0, 0.4);
 
-  --text-primary:   #1a1f36;
-  --text-secondary: #4a5568;
-  --text-muted:     #9aa5c0;
+  --text-primary:   #18181b;
+  --text-secondary: #52525b;
+  --text-muted:     #a1a1aa;
 
   --border-subtle: rgba(0, 0, 0, 0.06);
   --border-light:  rgba(0, 0, 0, 0.12);
 
-  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.16);
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.14);
 }

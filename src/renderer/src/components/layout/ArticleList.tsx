@@ -22,7 +22,7 @@ export function ArticleList() {
   const rowVirtualizer = useVirtualizer({
     count:          hasMore ? articles.length + 1 : articles.length,
     getScrollElement: () => parentRef.current,
-    estimateSize:   () => 88,   // Estimated card height in px
+    estimateSize:   () => 380, // Estimated card height in px (media card)
     overscan:       5,
   })
 

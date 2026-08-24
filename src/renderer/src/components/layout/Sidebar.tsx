@@ -390,7 +390,6 @@ export function Sidebar() {
               <path d="M1 20v-6h6" />
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
-            <span className={styles.actionLabel}>Sync</span>
           </button>
           <button
             title="Create Folder"
@@ -403,7 +402,6 @@ export function Sidebar() {
               <line x1="12" y1="11" x2="12" y2="17" />
               <line x1="9" y1="14" x2="15" y2="14" />
             </svg>
-            <span className={styles.actionLabel}>Dossier</span>
           </button>
           <button
             title="Settings"
@@ -415,7 +413,6 @@ export function Sidebar() {
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
-            <span className={styles.actionLabel}>Réglages</span>
           </button>
           <button
             title="Import OPML"
@@ -428,7 +425,6 @@ export function Sidebar() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span className={styles.actionLabel}>Import</span>
           </button>
           <button
             title="Export OPML"
@@ -441,7 +437,6 @@ export function Sidebar() {
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <span className={styles.actionLabel}>Export</span>
           </button>
         </div>
       </div>
@@ -487,21 +482,23 @@ export function Sidebar() {
             style={{
               flex: 1,
               width: '100%',
-              padding: '6px 28px 6px 30px',
-              borderRadius: '6px',
-              border: '1px solid var(--border-subtle)',
-              backgroundColor: 'var(--bg-elevated)',
-              color: 'var(--text-normal)',
+              padding: '8px 28px 8px 32px',
+              borderRadius: '9999px',
+              border: '1px solid transparent',
+              backgroundColor: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
               fontSize: '13px',
               outline: 'none',
-              transition: 'border-color 0.2s',
+              transition: 'border-color 0.2s, background 0.2s',
             }}
             onFocus={e => {
-              e.target.style.borderColor = 'var(--border-focus)'
+              e.target.style.borderColor = 'var(--border-light)'
+              e.target.style.background = 'var(--bg-elevated)'
               setIsSearchFocused(true)
             }}
             onBlur={e => {
-              e.target.style.borderColor = 'var(--border-subtle)'
+              e.target.style.borderColor = 'transparent'
+              e.target.style.background = 'var(--bg-surface)'
               setTimeout(() => setIsSearchFocused(false), 200)
             }}
           />
@@ -797,12 +794,15 @@ export function Sidebar() {
           + Add Feed
         </button>
         <button
-          className={styles.addFeedBtn}
+          className={styles.manageBtn}
           onClick={() => setManageFeedsOpen(true)}
           title="Manage Feeds"
-          style={{ padding: '0 8px', width: 'auto' }}
         >
-          ☰
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
         </button>
       </div>
 
