@@ -30,7 +30,7 @@ describe('normalizeArticleHtml', () => {
     expect(html).toContain('data-fallback-src="https://scx1.b-cdn.net/csz/news/tmb/2024/chatbot.jpg"')
   })
 
-  it('renders Reddit video player links as responsive players instead of preview images', () => {
+  it('tags Reddit preview images for hiding when a video player link exists', () => {
     const html = normalizeArticleHtml(
       '<div><a href="https://reddit.com/r/test/comments/abc"><img src="https://external-preview.redd.it/post.png"></a></div>' +
       '<p><a href="https://reddit.com/link/abc/video/media123/player">Demo</a></p>',
@@ -38,10 +38,12 @@ describe('normalizeArticleHtml', () => {
       'https://external-preview.redd.it/post.png',
     )
     expect(html).not.toContain('/video/media123/player')
-    expect(html).not.toContain('<img')
+    // The image stays in the DOM (tagged) so it can act as the poster until the
+    // video is ready — the reader hides tagged elements on video readiness.
+    expect(html).toContain('data-reddit-preview="true"')
   })
 
-  it('keeps a Reddit video thumbnail for the player poster instead of duplicating it in the body', () => {
+  it('tags a Reddit video thumbnail as poster instead of duplicating it in the body', () => {
     const poster = 'https://preview.redd.it/video-cover.jpg'
     const html = normalizeArticleHtml(
       `<p>Post description</p><a href="https://reddit.com/r/test/comments/abc"><img src="${poster}"></a>`,
@@ -51,7 +53,6 @@ describe('normalizeArticleHtml', () => {
     )
 
     expect(html).toContain('Post description')
-    expect(html).not.toContain('<img')
-    expect(html).not.toContain('video-cover.jpg')
+    expect(html).toContain('data-reddit-preview="true"')
   })
 })

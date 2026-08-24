@@ -200,6 +200,7 @@ a:hover { text-decoration: underline; }
   margin: 1em auto;
   border-radius: var(--radius-md);
   object-fit: contain;
+  cursor: zoom-in;
 }
 
 .reddit-video-container {

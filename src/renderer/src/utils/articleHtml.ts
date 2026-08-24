@@ -47,13 +47,20 @@ export function normalizeArticleHtml(
       )
       if (!isRedditPreview && !isFallbackPoster) continue
 
+      // Keep the image in the DOM but tag it: the reader hides it only once the
+      // video player is actually ready to play. Removing it outright made the
+      // poster image flash for a fraction of a second whenever the video
+      // failed to load (common with Reddit HLS).
       const wrapper = image.closest('a, figure, div')
       if (
         wrapper
         && wrapper.querySelectorAll('img').length === 1
         && !wrapper.textContent?.trim()
-      ) wrapper.remove()
-      else image.remove()
+      ) {
+        wrapper.setAttribute('data-reddit-preview', 'true')
+      } else {
+        image.setAttribute('data-reddit-preview', 'true')
+      }
     }
   }
 
