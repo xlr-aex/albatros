@@ -1,8 +1,5 @@
-<p align="center">
-  <img src="./src/renderer/src/assets/logo.png" alt="Albatros" width="80">
-</p>
+<img width="2172" height="724" alt="image" src="https://github.com/user-attachments/assets/0346e921-2e8c-4371-9ff7-54567759fbbb" />
 
-  # Albatros
 
   **A private, local-first desktop feed reader.**
 
