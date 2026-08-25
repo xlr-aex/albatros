@@ -21,6 +21,7 @@
 
 <img width="1917" height="992" alt="image" src="https://github.com/user-attachments/assets/ac4bbd3b-2009-49f3-b1f4-aa69ac1a1b03" />
 
+---
 
 Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and optional local AI—without requiring an account or hosted backend.
 
