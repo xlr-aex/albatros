@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="Albatros" width="150" />
+  <img src="albatros/src/renderer/src/assets/logo.png" alt="Albatros" width="150" />
 
   # Albatros
 

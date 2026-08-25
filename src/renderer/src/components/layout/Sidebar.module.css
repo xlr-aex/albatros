@@ -79,6 +79,10 @@
   background: var(--bg-elevated);
   color: var(--text-primary);
 }
+.actionBtnActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
 
 /* Text label below icon — hidden in feed edition (tooltips carry the meaning) */
 .actionLabel {
