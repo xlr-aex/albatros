@@ -56,6 +56,26 @@ function getFaviconUrl(siteUrl: string | null, feedUrl: string, feedIconUrl: str
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+/**
+ * One-time startup repair for stale favicon URLs.
+ * Feeds synced before the hostname guard existed may store a favicon lookup
+ * for a mismatched host (e.g. cms.singularityhub.com — a feed-host subdomain
+ * with no favicon). Recompute the fallback for those; the feed's own
+ * advertised icon replaces it at the next sync.
+ */
+export function repairStaleFaviconUrls(feedService: FeedService): void {
+  let repaired = 0
+  for (const feed of feedService.getAll()) {
+    if (!feed.favicon_url?.includes('google.com/s2/favicons')) continue
+    const corrected = getFaviconUrl(feed.site_url, feed.url, null)
+    if (corrected && corrected !== feed.favicon_url) {
+      feedService.update(feed.id, { favicon_url: corrected })
+      repaired++
+    }
+  }
+  if (repaired > 0) console.log(`[Favicon] Repaired ${repaired} stale favicon URL(s)`)
+}
+
 /** Maximum simultaneous feed fetches. */
 const MAX_CONCURRENT = 5
 

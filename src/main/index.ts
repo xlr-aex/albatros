@@ -47,7 +47,7 @@ import { SummaryService }  from './services/SummaryService'
 import { LlmService }      from './services/LlmService'
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
-import { SyncEngine } from './sync/SyncEngine'
+import { SyncEngine, repairStaleFaviconUrls } from './sync/SyncEngine'
 import { Scheduler }  from './sync/Scheduler'
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
@@ -244,6 +244,7 @@ async function bootstrap(): Promise<void> {
   // ── 2. Services ──────────────────────────────────────────────────────────
   const feedService     = new FeedService(db)
   feedService.clearTransientRateLimitErrors()
+  repairStaleFaviconUrls(feedService)
 
   const articleService  = new ArticleService(db)
   const searchService   = new SearchService(db)
