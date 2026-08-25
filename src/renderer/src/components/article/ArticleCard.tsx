@@ -1,7 +1,7 @@
 /**
  * @file components/article/ArticleCard.tsx
- * @description A single card in the article list panel.
- * Shows feed name, title, excerpt, relative time, and read/star state.
+ * @description A single post card in the article list panel.
+ * Instagram-style layout: avatar header, large media, title + excerpt below.
  */
 
 import React, { useState, useEffect, memo } from 'react'
@@ -24,13 +24,15 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
   const currentSearchQuery = useArticleStore(state => state.currentSearchQuery)
   const selection = useFeedStore(state => state.selection)
   const [thumbError, setThumbError] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
 
   // Reset error state if thumbnail_url changes
   useEffect(() => {
     setThumbError(false)
-  }, [thumbnail_url])
+    setAvatarError(false)
+  }, [thumbnail_url, article.feed_favicon])
 
-  const showFeedFavicon = article.feed_favicon && ['all', 'unread', 'saved', 'today', 'group', 'search'].includes(selection.type as string)
+  const showFeedFavicon = article.feed_favicon && ['all', 'unread', 'saved', 'today', 'group', 'search', 'feed'].includes(selection.type as string)
 
   const ariaLabel = [
     title ? unescapeHtml(title) : 'Untitled',
@@ -48,9 +50,46 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
       aria-label={ariaLabel}
       aria-current={isSelected ? 'true' : undefined}
     >
-      {/* Unread indicator dot */}
-      {!is_read && <span className={styles.unreadDot} aria-label="Unread" />}
+      {/* ── Post header : avatar ring + feed name + time ─────────────────── */}
+      <div className={styles.postHeader}>
+        <span className={styles.avatarRing}>
+          {showFeedFavicon && !avatarError ? (
+            <img
+              src={article.feed_favicon!}
+              className={styles.avatar}
+              alt=""
+              referrerPolicy="no-referrer"
+              onError={() => setAvatarError(true)}
+            />
+          ) : (
+            <span className={styles.avatarFallback}>{(feed_title ?? '?').charAt(0).toUpperCase()}</span>
+          )}
+        </span>
+        <div className={styles.headerMeta}>
+          <span className={styles.feedName}>{feed_title ?? 'Unknown Feed'}</span>
+          {published_at && (
+            <span className={styles.time}>{formatRelativeTime(published_at)}</span>
+          )}
+        </div>
+        {/* Unread indicator dot */}
+        {!is_read && <span className={styles.unreadDot} aria-label="Unread" />}
+      </div>
 
+      {/* ── Media : large Instagram-style image ──────────────────────────── */}
+      {thumbnail_url && !thumbError && !isCompact && (
+        <div className={styles.mediaWrapper}>
+          <img
+            src={thumbnail_url}
+            alt=""
+            className={styles.media}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setThumbError(true)}
+          />
+        </div>
+      )}
+
+      {/* ── Text body ────────────────────────────────────────────────────── */}
       <div className={styles.body}>
         {/* Title */}
         <h3 className={styles.title}>
@@ -64,20 +103,6 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
             'Untitled'
           )}
         </h3>
-
-        {/* Feed name + timestamp (Discreet line below title) */}
-        <div className={styles.meta}>
-          {showFeedFavicon && (
-            <img 
-              src={article.feed_favicon!} 
-              className={styles.feedFavicon} 
-              alt="" 
-              referrerPolicy="no-referrer"
-            />
-          )}
-          <span className={styles.feedName}>{feed_title ?? 'Unknown Feed'}</span>
-          {published_at && <span className={styles.time}>{formatRelativeTime(published_at)}</span>}
-        </div>
 
         {/* Excerpt */}
         {(article.snippet || excerpt) &&
@@ -98,20 +123,6 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
             )
           })()}
       </div>
-
-      {/* Thumbnail (Small format on the right) */}
-      {thumbnail_url && !thumbError && (
-        <div className={styles.thumbnailWrapper}>
-          <img
-            src={thumbnail_url}
-            alt=""
-            className={styles.thumbnail}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={() => setThumbError(true)}
-          />
-        </div>
-      )}
     </button>
   )
 })

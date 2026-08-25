@@ -136,11 +136,13 @@ const RedditVideoNode = React.memo(({
   fallbackPoster,
   postUrl,
   playerUrl,
+  onReady,
 }: {
   video: RedditVideoInfo | null
   fallbackPoster?: string | null
   postUrl?: string | null
   playerUrl: string | null
+  onReady?: () => void
 }) => {
   const [hasFailed, setHasFailed] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -234,6 +236,7 @@ const RedditVideoNode = React.memo(({
         playsInline
         preload="metadata"
         poster={poster}
+        onLoadedData={onReady}
         onError={() => { if (!hlsUrl) setHasFailed(true) }}
       />
     </div>
@@ -265,6 +268,8 @@ export function ArticleReader() {
   const [activeYtVideos, setActiveYtVideos] = useState<string[]>([])
   const [redditSelftext, setRedditSelftext] = useState<string | null>(null)
   const [redditVideo, setRedditVideo] = useState<RedditVideoInfo | null>(null)
+  const [redditVideoReady, setRedditVideoReady] = useState(false)
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null)
   const frozenContentHtmlRef = useRef<string | null>(null)
 
   const [redditJsonUrl, setRedditJsonUrl] = useState<string | null>(null)
@@ -377,6 +382,8 @@ export function ArticleReader() {
     setActiveYtVideos([])
     setRedditSelftext(null)
     setRedditVideo(null)
+    setRedditVideoReady(false)
+    setLightbox(null)
     frozenContentHtmlRef.current = null
 
     if (selectedArticle?.url && selectedArticle.url.includes('reddit.com')) {
@@ -451,7 +458,19 @@ export function ArticleReader() {
   // Intercept all link clicks in article body
   const handleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest('a')
-    if (!target) return
+    if (!target) {
+      // Direct click on a standalone image → open the lightbox viewer
+      const direct = e.target as HTMLElement
+      if (direct.tagName === 'IMG') {
+        const src = (direct as HTMLImageElement).currentSrc || (direct as HTMLImageElement).src
+        if (src) {
+          e.preventDefault()
+          e.stopPropagation()
+          setLightbox({ src, alt: (direct as HTMLImageElement).alt || '' })
+        }
+      }
+      return
+    }
     const href = target.getAttribute('href')
     if (!href || href.startsWith('#')) return
 
@@ -462,9 +481,19 @@ export function ArticleReader() {
     if (target.classList.contains('youtube-player-preview')) {
       const ytVideoIdMatch = href.match(/(?:v=|\/)([\w-]{11})(?:\?|&|$)/)
       const ytVideoId = ytVideoIdMatch ? ytVideoIdMatch[1] : null
-      
+
       if (ytVideoId) {
         setActiveYtVideos(prev => Array.from(new Set([...prev, ytVideoId])))
+        return
+      }
+    }
+
+    // Image wrapped in a link → lightbox viewer instead of link options
+    const linkedImage = target.querySelector('img')
+    if (linkedImage) {
+      const src = linkedImage.currentSrc || linkedImage.src
+      if (src) {
+        setLightbox({ src, alt: linkedImage.alt || '' })
         return
       }
     }
@@ -490,6 +519,16 @@ export function ArticleReader() {
     const top = e.currentTarget.scrollTop
     setIsScrolled(top > 20)
   }, [])
+
+  // Close the lightbox with Escape
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox])
 
   // Sanitise HTML content
   const safeHtml = selectedArticle?.content_html
@@ -594,6 +633,20 @@ export function ArticleReader() {
     })
     return () => cleanups.forEach(cleanup => cleanup())
   }, [normalizedHtml, selectedArticle?.id])
+
+  // Hide the Reddit preview image only once the video player can actually play.
+  // Until then the image stays visible (it doubles as the video poster), so a
+  // failing HLS stream never blanks out the post.
+  const handleVideoReady = useCallback(() => setRedditVideoReady(true), [])
+
+  useEffect(() => {
+    if (!redditVideoReady) return
+    const root = contentRef.current
+    if (!root) return
+    root.querySelectorAll('[data-reddit-preview]').forEach(el => {
+      ;(el as HTMLElement).style.display = 'none'
+    })
+  }, [redditVideoReady, normalizedHtml])
 
   if (isLoadingArticle && !selectedArticle) {
     return <div className={styles.empty}><span className="spinner" role="status" aria-label="Loading article" style={{ width: '1.25rem', height: '1.25rem' }} /></div>
@@ -862,7 +915,13 @@ export function ArticleReader() {
                 htmlToRender = DOMPurify.sanitize(mediaHtml + redditSelftext!, { FORCE_BODY: true })
               }
 
-              if (isLoadingArticle && !htmlToRender) {
+              if (isLoadingArticle) {
+                // Spinner for the whole fetch window. The optimistic summary
+                // has content_html: null, but normalizeArticleHtml still
+                // inserts the feed thumbnail — rendering that partial HTML
+                // made the image flash for a split second before the full
+                // content replaced the DOM (most visible on image-less feeds
+                // like singularityhub.com).
                 return (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 0' }}>
                     <span className="spinner" role="status" aria-label="Loading content" style={{ width: '1.5rem', height: '1.5rem', opacity: 0.5 }} />
@@ -886,6 +945,7 @@ export function ArticleReader() {
                   fallbackPoster={selectedArticle.thumbnail_url}
                   postUrl={selectedArticle.url}
                   playerUrl={redditVideoUrl}
+                  onReady={handleVideoReady}
                 />
                 <ArticleContentNode htmlToRender={htmlToRender} />
 
@@ -929,6 +989,34 @@ export function ArticleReader() {
             </div>
           )}
           </div> {/* end contentWrapper */}
+        </div>
+      )}
+
+      {/* ── Image lightbox (near-fullscreen viewer) ─────────── */}
+      {lightbox && (
+        <div
+          className={styles.lightbox}
+          role="dialog"
+          aria-label="Image viewer"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox.src}
+            alt={lightbox.alt}
+            className={styles.lightboxImg}
+            referrerPolicy="no-referrer"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            className={styles.lightboxClose}
+            onClick={() => setLightbox(null)}
+            aria-label="Close image viewer"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
       )}
 

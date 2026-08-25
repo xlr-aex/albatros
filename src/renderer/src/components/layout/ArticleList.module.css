@@ -17,12 +17,12 @@
   gap: var(--space-3);
   height: var(--toolbar-height);
   padding: 0 var(--space-5);
-  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 .title {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semi);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
   flex: 1;
   min-width: 0;
   overflow: hidden;

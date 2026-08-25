@@ -47,13 +47,20 @@ export function normalizeArticleHtml(
       )
       if (!isRedditPreview && !isFallbackPoster) continue
 
+      // Keep the image in the DOM but tag it: the reader hides it only once the
+      // video player is actually ready to play. Removing it outright made the
+      // poster image flash for a fraction of a second whenever the video
+      // failed to load (common with Reddit HLS).
       const wrapper = image.closest('a, figure, div')
       if (
         wrapper
         && wrapper.querySelectorAll('img').length === 1
         && !wrapper.textContent?.trim()
-      ) wrapper.remove()
-      else image.remove()
+      ) {
+        wrapper.setAttribute('data-reddit-preview', 'true')
+      } else {
+        image.setAttribute('data-reddit-preview', 'true')
+      }
     }
   }
 
@@ -61,6 +68,14 @@ export function normalizeArticleHtml(
   let usableImage = redditVideoLinks.length > 0 || hasPrimaryVideo
 
   for (const image of images) {
+    // Skip 1×1 tracking pixels (WordPress stats, newsletter beacons…).
+    // They carry a valid src, so without this check they count as a "usable
+    // body image" and the feed thumbnail is never inserted — image-less posts
+    // then render with no image at all.
+    const attrWidth = parseInt(image.getAttribute('width') || '', 10)
+    const attrHeight = parseInt(image.getAttribute('height') || '', 10)
+    if ((attrWidth > 0 && attrWidth <= 2) || (attrHeight > 0 && attrHeight <= 2)) continue
+
     const candidate =
       image.getAttribute('src') ||
       image.getAttribute('data-src') ||

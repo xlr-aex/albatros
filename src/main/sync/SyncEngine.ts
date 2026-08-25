@@ -24,11 +24,29 @@ import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
 import { persistDatabase } from '../db/connection'
 
-function getFaviconUrl(siteUrl: string | null, feedUrl: string): string | null {
+function getBaseDomain(hostname: string): string {
+  const parts = hostname.toLowerCase().split('.').filter(Boolean)
+  if (parts.length <= 2) return parts.join('.')
+  // Rough public-suffix handling for common two-part TLDs (co.uk, com.au…)
+  const twoPartTld = /^(co|com|org|net|gov|ac)\.[a-z]{2}$/.test(parts.slice(-2).join('.'))
+  return parts.slice(twoPartTld ? -3 : -2).join('.')
+}
+
+function getFaviconUrl(siteUrl: string | null, feedUrl: string, feedIconUrl: string | null): string | null {
+  // Prefer the icon the feed advertises itself (channel image, atom logo…):
+  // it is guaranteed to exist, unlike third-party favicon services.
+  // Sanitise it: feeds sometimes ship URLs with a trailing slash that 404s
+  // (e.g. redditstatic.com/icon.png/).
+  if (feedIconUrl && /^https?:\/\//i.test(feedIconUrl)) {
+    return feedIconUrl.trim().replace(/\/+$/, '') || null
+  }
   try {
     const url = siteUrl || feedUrl
     if (!url) return null
-    const hostname = new URL(url).hostname
+    // Query the favicon service with the registrable domain: feed site URLs
+    // sometimes live on subdomains with no favicon of their own
+    // (e.g. cms.singularityhub.com).
+    const hostname = getBaseDomain(new URL(url).hostname)
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
   } catch {
     return null
@@ -36,6 +54,32 @@ function getFaviconUrl(siteUrl: string | null, feedUrl: string): string | null {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * One-time startup repair for broken favicon URLs.
+ * Covers two historical defects:
+ *  - favicon lookups pinned to a mismatched/broken host (cms.singularityhub.com)
+ *  - feed-advertised icons stored with a trailing slash (redditstatic icon.png/)
+ * Recompute every machine-managed favicon; the feed's own advertised icon
+ * (sanitised) is kept when present.
+ */
+export function repairStaleFaviconUrls(feedService: FeedService): void {
+  let repaired = 0
+  for (const feed of feedService.getAll()) {
+    if (!feed.favicon_url || !/^https?:\/\//i.test(feed.favicon_url)) continue
+    const isFaviconService = feed.favicon_url.includes('google.com/s2/favicons')
+    const corrected = getFaviconUrl(
+      feed.site_url,
+      feed.url,
+      isFaviconService ? null : feed.favicon_url,
+    )
+    if (corrected && corrected !== feed.favicon_url) {
+      feedService.update(feed.id, { favicon_url: corrected })
+      repaired++
+    }
+  }
+  if (repaired > 0) console.log(`[Favicon] Repaired ${repaired} stale favicon URL(s)`)
+}
 
 /** Maximum simultaneous feed fetches. */
 const MAX_CONCURRENT = 5
@@ -273,7 +317,7 @@ export class SyncEngine {
         }
 
         // Update feed metadata from parsed feed info
-        const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl)
+        const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl, parsed.meta.icon_url)
         if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
           this.feedService.update(
             feed.id,

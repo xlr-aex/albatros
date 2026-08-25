@@ -107,6 +107,10 @@ const api = {
   },
   debug: {
     log: (msg: string) => ipcRenderer.send('debug:log', msg)
+  },
+
+  menu: {
+    toggle: () => ipcRenderer.invoke('menu:toggle') as Promise<boolean>
   }
 }
 

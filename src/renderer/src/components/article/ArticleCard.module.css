@@ -1,79 +1,128 @@
-/* ArticleCard.module.css */
+/* ArticleCard.module.css — Instagram-style feed post card */
 
 .card {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  width: calc(100% - var(--space-2));
-  margin: 2px var(--space-1);
-  padding: var(--space-4) var(--space-4);
+  flex-direction: column;
+  align-items: stretch;      /* Override global button centering */
+  justify-content: flex-start;
+  width: calc(100% - var(--space-4));
+  margin: var(--space-2) var(--space-2);
+  padding: var(--space-3) 0 var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
   text-align: left;
-  border-radius: var(--radius-md);
-  transition: background var(--transition), transform var(--transition-fast);
+  border-radius: var(--radius-lg);
+  transition: background var(--transition);
   cursor: pointer;
 }
-.card:hover  { background: var(--bg-elevated); transform: translateX(1px); }
-.selected    { background: color-mix(in srgb, var(--brand-500), transparent 88%) !important; border-left: 2px solid var(--brand-500); transform: none !important; }
-.read .title { color: var(--text-secondary); font-weight: var(--weight-regular); }
-
-/* Unread blue dot */
-.unreadDot {
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 50%;
-  background: var(--brand-500);
-  opacity: 0.6;
-  flex-shrink: 0;
-  margin-top: 6px;
+.card:hover  { background: color-mix(in srgb, var(--bg-elevated), transparent 55%); }
+.selected    {
+  background: color-mix(in srgb, var(--brand-500), transparent 92%) !important;
 }
+/* Read posts: colour shift only — keep weight identical to avoid text reflow,
+   which would resize rows mid-scroll and desynchronise the virtualizer. */
+.read .title { color: var(--text-secondary); }
 
-.body { flex: 1; min-width: 0; }
-
-.meta {
+/* ── Post header : avatar + feed name + time ────────────────────────────────── */
+.postHeader {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: 4px;
+  padding: 0 var(--space-3) var(--space-2);
 }
-.feedFavicon {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  object-fit: contain;
-  margin-right: -2px;
-  opacity: 0.7;
+
+.avatarRing {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-surface);
+  padding: 2px; /* inner gap between ring and favicon */
+}
+.avatarFallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.headerMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
 }
 .feedName {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-weight: var(--weight-medium);
-  flex-shrink: 0;
-  max-width: 60%;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.feedName::after {
-  content: "•";
-  margin-left: var(--space-2);
-  color: var(--text-muted);
-  opacity: 0.5;
-}
 .time {
   font-size: var(--text-xs);
   color: var(--text-muted);
-  opacity: 0.7;
+}
+
+/* Unread blue dot — top right of header */
+.unreadDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--brand-500);
   flex-shrink: 0;
+  margin-right: var(--space-2);
+}
+
+/* ── Media : large image, Instagram style ───────────────────────────────────── */
+.mediaWrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-surface);
+  margin-bottom: var(--space-3);
+}
+.media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s var(--ease-out);
+}
+.card:hover .media { transform: scale(1.03); }
+
+/* ── Text body ──────────────────────────────────────────────────────────────── */
+.body {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-3);
 }
 
 .title {
   font-size: var(--text-base);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-semi);
   color: var(--text-primary);
   line-height: var(--leading-tight);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
@@ -84,34 +133,18 @@
 .excerpt {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  opacity: 0.8;
+  opacity: 0.85;
   line-height: var(--leading-normal);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
-/* Compact mode: hide excerpt to maximise scannable titles */
-.compact .excerpt { display: none; }
-.compact { padding: var(--space-2) var(--space-4); }
+/* Compact mode: no media, tight rows for rapid scanning */
+.compact .mediaWrapper { display: none; }
+.compact { padding-top: var(--space-2); padding-bottom: var(--space-2); }
 .compact .title { -webkit-line-clamp: 2; line-clamp: 2; }
-
-.thumbnailWrapper {
-  width: 64px;
-  height: 64px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--bg-elevated);
-  margin-top: 4px;
-}
-
-.thumbnail {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: opacity var(--transition);
-}
+.compact .postHeader { padding-bottom: var(--space-1); }
