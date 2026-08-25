@@ -59,12 +59,12 @@
   "build": {
     "appId": "com.albatros.rss",
     "productName": "Albatros",
+    "icon": "resources/icon.ico",
     "directories": {
       "output": "release"
     },
     "files": [
-      "dist-electron",
-      "dist"
+      "out"
     ],
     "win": {
       "target": "nsis"
