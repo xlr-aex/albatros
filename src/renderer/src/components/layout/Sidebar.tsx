@@ -42,12 +42,10 @@ function getBaseDomain(hostname: string): string {
 
 function getFaviconFallbackUrl(feed: Feed): string {
   try {
-    const siteHost = feed.site_url ? new URL(feed.site_url).hostname : null
-    const feedHost = new URL(feed.url).hostname
-    // Feeds hosted on a different host than their site (cms.example.com…)
-    // must not poison the favicon lookup — prefer the feed host in that case.
-    const hostname =
-      siteHost && getBaseDomain(siteHost) === getBaseDomain(feedHost) ? siteHost : feedHost
+    // Query the favicon service with the registrable domain — feed site URLs
+    // sometimes live on subdomains with no favicon of their own.
+    const url = feed.site_url || feed.url
+    const hostname = getBaseDomain(new URL(url).hostname)
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
   } catch {
     return ''
@@ -242,6 +240,7 @@ export function Sidebar() {
   const [showSyncComplete, setShowSyncComplete] = useState(false)
   const [addFeedOpen, setAddFeedOpen] = useState(false)
   const [createGroupOpen, setCreateGroupOpen] = useState(false)
+  const [menuVisible, setMenuVisible] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [manageFeedsOpen, setManageFeedsOpen] = useState(false)
   const [isDragOverRoot, setIsDragOverRoot] = useState(false)

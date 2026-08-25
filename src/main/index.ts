@@ -65,6 +65,7 @@ function createWindow(): BrowserWindow {
     minHeight:       600,
     backgroundColor: '#0f1117', // Dark background to avoid white flash
     titleBarStyle:   'hiddenInset',
+    autoHideMenuBar: true,
     icon:            path.join(__dirname, '../../resources/icon.png'),
     webPreferences:  {
       preload:          path.join(__dirname, '../preload/index.js'),
@@ -277,6 +278,14 @@ async function bootstrap(): Promise<void> {
   })
   ipcMain.handle('summary:trigger', () => {
     summaryService?.trigger()
+  })
+
+  ipcMain.handle('menu:toggle', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return false
+    const visible = !win.isMenuBarVisible()
+    win.setMenuBarVisibility(visible)
+    return visible
   })
 
   ipcMain.on('debug:log', (_event, msg) => {

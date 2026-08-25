@@ -35,19 +35,18 @@ function getBaseDomain(hostname: string): string {
 function getFaviconUrl(siteUrl: string | null, feedUrl: string, feedIconUrl: string | null): string | null {
   // Prefer the icon the feed advertises itself (channel image, atom logo…):
   // it is guaranteed to exist, unlike third-party favicon services.
-  if (feedIconUrl && /^https?:\/\//i.test(feedIconUrl)) return feedIconUrl
+  // Sanitise it: feeds sometimes ship URLs with a trailing slash that 404s
+  // (e.g. redditstatic.com/icon.png/).
+  if (feedIconUrl && /^https?:\/\//i.test(feedIconUrl)) {
+    return feedIconUrl.trim().replace(/\/+$/, '') || null
+  }
   try {
-    const siteHost = siteUrl ? new URL(siteUrl).hostname : null
-    const feedHost = feedUrl ? new URL(feedUrl).hostname : null
-    // Feeds are sometimes hosted on a different host than the site (e.g.
-    // cms.singularityhub.com). When both belong to the same site, trust the
-    // site URL; otherwise fall back to the feed host so the favicon service
-    // resolves a domain that actually has an icon.
-    const hostname =
-      siteHost && feedHost && getBaseDomain(siteHost) === getBaseDomain(feedHost)
-        ? siteHost
-        : feedHost ?? siteHost
-    if (!hostname) return null
+    const url = siteUrl || feedUrl
+    if (!url) return null
+    // Query the favicon service with the registrable domain: feed site URLs
+    // sometimes live on subdomains with no favicon of their own
+    // (e.g. cms.singularityhub.com).
+    const hostname = getBaseDomain(new URL(url).hostname)
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`
   } catch {
     return null
@@ -57,17 +56,23 @@ function getFaviconUrl(siteUrl: string | null, feedUrl: string, feedIconUrl: str
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
- * One-time startup repair for stale favicon URLs.
- * Feeds synced before the hostname guard existed may store a favicon lookup
- * for a mismatched host (e.g. cms.singularityhub.com — a feed-host subdomain
- * with no favicon). Recompute the fallback for those; the feed's own
- * advertised icon replaces it at the next sync.
+ * One-time startup repair for broken favicon URLs.
+ * Covers two historical defects:
+ *  - favicon lookups pinned to a mismatched/broken host (cms.singularityhub.com)
+ *  - feed-advertised icons stored with a trailing slash (redditstatic icon.png/)
+ * Recompute every machine-managed favicon; the feed's own advertised icon
+ * (sanitised) is kept when present.
  */
 export function repairStaleFaviconUrls(feedService: FeedService): void {
   let repaired = 0
   for (const feed of feedService.getAll()) {
-    if (!feed.favicon_url?.includes('google.com/s2/favicons')) continue
-    const corrected = getFaviconUrl(feed.site_url, feed.url, null)
+    if (!feed.favicon_url || !/^https?:\/\//i.test(feed.favicon_url)) continue
+    const isFaviconService = feed.favicon_url.includes('google.com/s2/favicons')
+    const corrected = getFaviconUrl(
+      feed.site_url,
+      feed.url,
+      isFaviconService ? null : feed.favicon_url,
+    )
     if (corrected && corrected !== feed.favicon_url) {
       feedService.update(feed.id, { favicon_url: corrected })
       repaired++

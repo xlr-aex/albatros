@@ -29,12 +29,13 @@
 }
 .logoImg {
   height: 34px;
-  width: auto;
+  width: 34px;
   object-fit: contain;
+  border-radius: 8px;
 }
 
 .logoText {
-  margin-left: -16px;
+  margin-left: 8px;
   font-family: 'Orbitron', 'Segoe UI', sans-serif;
   font-size: 15px;
   font-weight: 900;
@@ -47,6 +48,14 @@
     -2px -2px 0 rgba(0, 240, 255, 0.35);
   user-select: none;
   white-space: nowrap;
+}
+
+:global([data-theme='light']) .logoText {
+  color: #000000;
+  text-shadow:
+    0 0 4px rgba(0, 0, 0, 0.6),
+    2px 2px 0 rgba(255, 0, 200, 0.3),
+    -2px -2px 0 rgba(0, 160, 255, 0.3);
 }
 
 .actions {
