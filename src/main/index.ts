@@ -66,7 +66,7 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#0f1117', // Dark background to avoid white flash
     titleBarStyle:   'hiddenInset',
     autoHideMenuBar: true,
-    icon:            path.join(__dirname, '../../resources/icon.png'),
+    icon:            path.join(__dirname, '../../resources/icon.ico'),
     webPreferences:  {
       preload:          path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,    // Required for security
@@ -150,10 +150,10 @@ async function bootstrap(): Promise<void> {
 
       // 1. Intercept outgoing request headers
       ses.webRequest.onBeforeSendHeaders(
-        { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*'] },
+        { urls: ['*://*.reddit.com/*', '*://reddit.com/*', '*://*.redd.it/*', '*://*.youtube.com/*', '*://*.youtube-nocookie.com/*'] },
         (details, callback) => {
           const headers = { ...details.requestHeaders }
-          
+
           const setHeader = (name: string, value: string) => {
             const lower = name.toLowerCase()
             for (const key of Object.keys(headers)) {
@@ -162,6 +162,13 @@ async function bootstrap(): Promise<void> {
               }
             }
             headers[name] = value
+          }
+
+          // YouTube error 153 fix (late-2025 policy): embedded players require a
+          // valid HTTP Referer. file:// / opaque origins send none, so we inject
+          // one matching the `origin` param passed by the renderer iframes.
+          if (/\.youtube(?:-nocookie)?\.com$/.test(new URL(details.url).hostname)) {
+            setHeader('Referer', 'https://albatros.app/')
           }
 
           setHeader('User-Agent', cleanUA)

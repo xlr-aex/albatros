@@ -94,7 +94,7 @@ const RetroPlayerNode = React.memo(({
         <iframe 
           width="100%" 
           height="100%" 
-          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&dnt=1&origin=http://localhost:5173`} 
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&dnt=1&origin=https://albatros.app`}
           frameBorder="0" 
           referrerPolicy="strict-origin-when-cross-origin" 
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
@@ -841,7 +841,7 @@ export function ArticleReader() {
                           const iframe = document.createElement('iframe')
                           iframe.width = '100%'
                           iframe.height = '100%'
-                          iframe.src = `https://www.youtube.com/embed/${vid}?autoplay=1&dnt=1&origin=http://localhost:5173`
+                          iframe.src = `https://www.youtube.com/embed/${vid}?autoplay=1&dnt=1&origin=https://albatros.app`
                           iframe.setAttribute('frameborder', '0')
                           iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
                           iframe.allowFullscreen = true
