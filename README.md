@@ -7,7 +7,7 @@
 
   <br />
 
-  [![Download Albatros](https://img.shields.io/badge/Download-Albatros-238636?style=for-the-badge&logo=github&logoColor=white)](https://github.com/xlr-aex/albatros/releases/latest)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-Latest_Release-238636?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/xlr-aex/albatros/releases/latest)
 
   <br />
 
