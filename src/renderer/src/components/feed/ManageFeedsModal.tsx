@@ -123,7 +123,7 @@ export function ManageFeedsModal({ onClose }: Props) {
                   alignItems: 'center',
                   gap: '12px',
                   padding: '8px 12px',
-                  borderRadius: '6px',
+                  borderRadius: 'var(--radius-sm)',
                   cursor: 'pointer',
                   background: selected.has(feed.id) ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
                   transition: 'background 150ms',
@@ -161,7 +161,7 @@ export function ManageFeedsModal({ onClose }: Props) {
         {/* Footer — fixed label button (no "Delete 0 Feeds" paradox) */}
         <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
           <button
-            style={{ padding: '8px 16px', fontWeight: 'bold', background: 'transparent', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer' }}
+            style={{ padding: '8px 16px', fontWeight: 'bold', background: 'transparent', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer' }}
             onClick={onClose}
           >
             Fermer
@@ -174,7 +174,7 @@ export function ManageFeedsModal({ onClose }: Props) {
                 padding: '2px 8px',
                 background: 'rgba(239,68,68,0.15)',
                 border: '1px solid rgba(239,68,68,0.35)',
-                borderRadius: '9999px',
+                borderRadius: 'var(--radius-sm)',
                 fontSize: '12px',
                 color: '#f87171',
                 fontWeight: 'bold',
@@ -189,7 +189,7 @@ export function ManageFeedsModal({ onClose }: Props) {
                 fontWeight: 'bold',
                 background: selected.size > 0 ? 'rgba(239,68,68,0.85)' : 'var(--bg-elevated)',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: 'var(--radius-sm)',
                 color: selected.size > 0 ? '#fff' : 'var(--text-muted)',
                 cursor: selected.size > 0 ? 'pointer' : 'not-allowed',
                 transition: 'all 150ms',

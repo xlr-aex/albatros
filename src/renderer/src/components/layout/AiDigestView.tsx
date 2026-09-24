@@ -523,7 +523,7 @@ ${contentToSend}`
             padding: '7px 16px',
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border-light)',
-            borderRadius: '9999px',
+            borderRadius: 'var(--radius-md)',
             color: 'var(--text-secondary)',
             fontSize: '0.78rem',
             fontWeight: 600,

@@ -152,7 +152,7 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
   padding: 8px 16px;
-  border-radius: 99px;
+  border-radius: var(--radius-md);
   font-size: var(--text-sm);
   color: var(--text-secondary);
   cursor: pointer;
@@ -342,7 +342,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   margin-bottom: 2px;
 }
 

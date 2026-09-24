@@ -31,7 +31,7 @@
   height: 34px;
   width: 34px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .logoText {
@@ -71,7 +71,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   transition: all var(--transition-fast);
 }
@@ -159,7 +159,7 @@
   font-weight: var(--weight-semi);
   min-width: 18px;
   height: 16px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -449,7 +449,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--brand-500);
   border: none;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   color: #ffffff;
   font-size: var(--text-sm);
   font-weight: var(--weight-semi);
@@ -466,7 +466,7 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--text-muted);

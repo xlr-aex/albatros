@@ -906,9 +906,9 @@ export function ArticleReader() {
                     
                     const a = img.closest('a')
                     if (a) {
-                      mediaHtml += `<a href="${a.href}"><img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /></a><br/>`
+                      mediaHtml += `<a href="${a.href}"><img src="${img.src}" style="max-width: 100%; border-radius: 4px; margin-bottom: 16px;" /></a><br/>`
                     } else {
-                      mediaHtml += `<img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /><br/>`
+                      mediaHtml += `<img src="${img.src}" style="max-width: 100%; border-radius: 4px; margin-bottom: 16px;" /><br/>`
                     }
                   })
                 }
@@ -976,7 +976,7 @@ export function ArticleReader() {
               </h3>
 
               {!isLoadingComments && liveComments.length > 0 && (
-                <div style={{ background: 'var(--bg-elevated)', borderRadius: '8px', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
                   {liveComments.map(comment => (
                     <CommentNode key={comment.id} comment={comment} />
                   ))}

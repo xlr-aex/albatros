@@ -287,7 +287,7 @@ export function SettingsPanel({ onClose }: Props) {
                   </div>
 
                   {/* Live preview */}
-                  <div style={{ marginTop: '8px', padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: '8px', background: 'var(--bg-base)' }}>
+                  <div style={{ marginTop: '8px', padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'var(--bg-base)' }}>
                     <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>Aperçu du texte</div>
                     <div style={{ fontSize: 'var(--article-font-size, 16px)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
                       Portez ce vieux whisky au juge blond qui fume.
@@ -428,7 +428,7 @@ export function SettingsPanel({ onClose }: Props) {
 
                   {/* Diagnostic error message */}
                   {aiTestStatus === 'ok' && aiTestMsg && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--color-success)', lineHeight: 1.5, padding: '8px 12px', background: 'rgba(74, 222, 128, 0.07)', borderRadius: '6px', border: '1px solid rgba(74,222,128,0.15)' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-success)', lineHeight: 1.5, padding: '8px 12px', background: 'rgba(74, 222, 128, 0.07)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(74,222,128,0.15)' }}>
                       {aiTestMsg}
                     </div>
                   )}
