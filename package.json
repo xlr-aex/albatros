@@ -1,6 +1,6 @@
 {
   "name": "albatros",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A fast, offline-first RSS feed reader with SQLite — inspired by Inoreader",
   "license": "MIT",
   "private": true,
@@ -63,7 +63,15 @@
     "directories": {
       "output": "release"
     },
-    "files": [\n      "out"\n    ],\n    "extraResources": [\n      {\n        "from": "resources/vector_worker.py",\n        "to": "vector_worker.py"\n      }\n    ],
+    "files": [
+      "out"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/vector_worker.py",
+        "to": "vector_worker.py"
+      }
+    ],
     "win": {
       "target": "nsis"
     },
