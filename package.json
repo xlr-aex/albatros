@@ -1,7 +1,7 @@
 {
   "name": "albatros",
   "version": "1.1.0",
-  "description": "A fast, offline-first RSS feed reader with SQLite — inspired by Inoreader",
+  "description": "A fast, offline-first RSS feed reader with SQLite - inspired by Inoreader",
   "license": "MIT",
   "private": true,
   "main": "out/main/index.js",
@@ -60,6 +60,7 @@
     "appId": "com.albatros.rss",
     "productName": "Albatros",
     "icon": "resources/icon.ico",
+    "publish": "never",
     "directories": {
       "output": "release"
     },
@@ -76,9 +77,11 @@
       "target": "nsis"
     },
     "mac": {
+      "icon": "resources/icon-1024.png",
       "target": "dmg"
     },
     "linux": {
+      "icon": "resources/icon-1024.png",
       "target": "AppImage"
     },
     "nsis": {
