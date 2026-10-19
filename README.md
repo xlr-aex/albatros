@@ -49,22 +49,22 @@ Albatros keeps subscriptions, downloaded articles and reading state on your comp
 
 <div align="center">
 
-### Télécharger Albatros
+### Download Albatros
 
 | Windows | macOS | Linux |
 |:---:|:---:|:---:|
 | [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-238636?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/xlr-aex/albatros/releases/latest) | [![macOS](https://img.shields.io/badge/macOS-DMG-1f2430?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/xlr-aex/albatros/releases/latest) | [![Linux](https://img.shields.io/badge/Linux-AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=111111)](https://github.com/xlr-aex/albatros/releases/latest) |
-| Installeur `.exe` | Image disque `.dmg` | Application portable `.AppImage` |
+| `.exe` installer | `.dmg` disk image | Portable `.AppImage` |
 
-[Voir toutes les versions →](https://github.com/xlr-aex/albatros/releases)
+[View all releases →](https://github.com/xlr-aex/albatros/releases)
 
 </div>
 
-Téléchargez le fichier correspondant à votre système depuis la dernière release. Sous Linux, rendez le fichier AppImage exécutable avant de l’ouvrir : `chmod +x Albatros-*.AppImage`.
+Download the file for your platform from the latest release. On Linux, make the AppImage executable before opening it: `chmod +x Albatros-*.AppImage`.
 
-### Développement
+### Development
 
-Node.js 20 ou 22 LTS et npm 9+ sont recommandés.
+Node.js 20 or 22 LTS and npm 9+ are recommended.
 
 ```bash
 git clone https://github.com/xlr-aex/albatros.git
