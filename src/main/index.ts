@@ -275,18 +275,17 @@ async function bootstrap(): Promise<void> {
   registerArticleHandlers(articleService, searchService, feedService)
   registerSettingsHandlers(settingsService)
   registerLlmHandlers(llmService)
-  registerSyncHandlers(scheduler)`n  registerLayaHandlers(layaService)
+  registerSyncHandlers(scheduler)
+  registerLayaHandlers(layaService)
 
   ipcMain.handle('summary:status-get', () => {
     return {
-      pending: summaryService?.getPendingCount() ?? 0,
-      total: summaryService?.getTotalCount() ?? 0,
+      pending: 0,
+      total: 0,
       isProcessing: false
     }
   })
-  ipcMain.handle('summary:trigger', () => {
-    layaService?.trigger()
-  })
+  ipcMain.handle('summary:trigger', () => undefined)
 
   ipcMain.handle('menu:toggle', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
