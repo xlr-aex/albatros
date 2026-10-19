@@ -19,13 +19,13 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            command: npx electron-builder --win nsis
+            command: npx electron-builder --publish never --win nsis
           - name: macOS
             os: macos-latest
-            command: npx electron-builder --mac dmg
+            command: npx electron-builder --publish never --mac dmg
           - name: Linux
             os: ubuntu-latest
-            command: npx electron-builder --linux AppImage
+            command: npx electron-builder --publish never --linux AppImage
 
     steps:
       - uses: actions/checkout@v4

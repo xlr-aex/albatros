@@ -60,7 +60,6 @@
     "appId": "com.albatros.rss",
     "productName": "Albatros",
     "icon": "resources/icon.ico",
-    "publish": "never",
     "directories": {
       "output": "release"
     },
