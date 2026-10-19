@@ -23,7 +23,8 @@
 
 ---
 
-<img width="1917" height="992" alt="image" src="https://github.com/user-attachments/assets/ac4bbd3b-2009-49f3-b1f4-aa69ac1a1b03" />
+<img width="1917" height="977" alt="image" src="https://github.com/user-attachments/assets/5ceaf7f3-2e58-4432-b1c4-f681dd6d75a2" />
+
 
 ---
 
@@ -87,6 +88,9 @@ npm run dev
 Laya folders sort new posts locally according to rules you define. Create a folder from **Laya folders**, select its source groups or individual feeds, then let the background worker classify new posts. The top gauge shows overall progress; each folder card shows its own source-scope progress. The former Chatbot and external local-model configuration are no longer part of Albatros.
 
 The first use on Windows downloads a private Python runtime and the local Laya dependencies into Albatros’ application-data directory. Nothing is installed system-wide. See [Laya folders](docs/laya-folders.md) for scope rules, controls and troubleshooting.
+
+<img width="1892" height="667" alt="image" src="https://github.com/user-attachments/assets/397b9709-1a84-43c7-bb09-8a63df8967ca" />
+
 
 ## Keyboard navigation
 
