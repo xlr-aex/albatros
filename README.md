@@ -37,6 +37,7 @@ Albatros keeps subscriptions, downloaded articles and reading state on your comp
 | Feed folders and unread counters | Reddit comments and HLS video playback |
 | Saved posts and full-text search | Lazy loading with reliable fallbacks |
 | Offline access to downloaded content | Embedded browser with ad blocking |
+| GitHub links, repositories and issue feeds | Inline previews for linked content |
 
 | Sync | Local classification |
 |---|---|
