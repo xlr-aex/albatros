@@ -19,7 +19,8 @@
   align-items: center;
   height: auto;
   min-height: var(--toolbar-height);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .logo {
   display: flex;
@@ -31,7 +32,7 @@
   height: 34px;
   width: 34px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .logoText {
@@ -71,7 +72,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   transition: all var(--transition-fast);
 }
@@ -95,11 +96,20 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-2) 0;
+  padding: var(--space-3) 0;
 }
 
 .section {
   padding: var(--space-1) 0;
+}
+
+.layaHeading {
+  padding: 7px var(--space-4) 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .feedSection {
@@ -118,8 +128,8 @@
   align-items: center;
   gap: var(--space-2);
   width: calc(100% - var(--space-4));
-  margin: 1px var(--space-2);
-  padding: 7px var(--space-3);
+  margin: 2px var(--space-2);
+  padding: 9px var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   color: var(--text-secondary);
@@ -134,8 +144,9 @@
   color: var(--text-primary);
 }
 .navItem.active {
-  background: color-mix(in srgb, var(--brand-500), transparent 88%);
+  background: color-mix(in srgb, var(--brand-500), transparent 82%);
   color: var(--brand-400);
+  box-shadow: inset 3px 0 0 var(--brand-500);
 }
 
 .navIcon {
@@ -153,19 +164,19 @@
 /* Unread badge — muted presence indicator, not an alarm */
 .badge {
   flex-shrink: 0;
-  background: var(--color-unread-badge-bg, rgba(96, 165, 250, 0.15));
-  color: var(--color-unread-badge-text, #7eb3f8);
+  background: var(--color-unread-badge-bg);
+  color: var(--color-unread-badge-text);
   font-size: 10px;
   font-weight: var(--weight-semi);
   min-width: 18px;
   height: 16px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 5px;
   letter-spacing: 0.02em;
-  border: 1px solid rgba(96, 165, 250, 0.2);
+  border: 1px solid var(--color-unread-badge-border);
 }
 
 /* Total posts shown only when a feed has no unread items, so it never looks empty. */
@@ -186,6 +197,9 @@
 .groupHeader {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  align-self: stretch;
+  box-sizing: border-box;
   gap: var(--space-3);
   width: calc(100% - var(--space-4));
   margin: 1px var(--space-2);
@@ -260,21 +274,25 @@
   color: var(--brand-400);
 }
 .groupName {
-  flex: 1;
+  /* Renaming belongs to the label itself, not to the empty part of the row. */
+  flex: 0 1 auto;
+  max-width: 280px;
   text-align: left;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 4px;
+  padding: 2px 4px;
   border-radius: 4px;
+  cursor: text;
 }
 .groupName:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
 .renameInput {
-  flex: 1;
+  flex: 0 1 280px;
+  max-width: 280px;
   background: var(--bg-elevated);
   color: var(--text-primary);
   border: 1px solid var(--brand-500);
@@ -290,37 +308,13 @@
 .groupFeeds {
   display: flex;
   flex-direction: column;
-  margin-left: 60px;
-  padding-left: 12px;
-  border-left: 2px solid var(--brand-500);
-  margin-top: 2px;
-  margin-bottom: 8px;
-  position: relative;
-}
-
-.groupFeeds .feedItem.active {
-  margin-left: -12px;
-  padding-left: calc(var(--space-3) + 12px);
-}
-
-.groupFeeds::before {
-  content: '';
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  width: 12px;
-  height: 2px;
-  background: var(--brand-500);
-}
-
-.groupFeeds::after {
-  content: '';
-  position: absolute;
-  left: -2px;
-  bottom: -2px;
-  width: 12px;
-  height: 2px;
-  background: var(--brand-500);
+  /* A quiet inset panel groups a folder's feeds without the visual noise of
+     a long vertical "tree" line. */
+  margin: var(--space-1) var(--space-3) var(--space-2) 44px;
+  padding: var(--space-1);
+  border: 1px solid color-mix(in srgb, var(--brand-500), transparent 86%);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--brand-500), transparent 95%);
 }
 
 /* Feed item indent (ungrouped) */
@@ -349,26 +343,14 @@
 
 /* Nested feed item indent */
 .groupFeeds .feedItem {
-  padding-left: calc(var(--space-3) + 12px);
-  margin-left: 0;
-  border-radius: var(--radius-md);
+  padding-left: var(--space-2);
+  margin: 0;
+  border-radius: var(--radius-sm);
   position: relative;
 }
 
 .groupFeeds .feedItem.active {
-  background: color-mix(in srgb, var(--brand-500), transparent 88%);
-}
-
-/* Extend active background to folder line */
-.groupFeeds .feedItem.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 12px;
-  background: color-mix(in srgb, var(--brand-500), transparent 88%);
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: color-mix(in srgb, var(--brand-500), transparent 86%);
 }
 
 .groupFeeds .feedItem.active .dragGrip {
@@ -442,15 +424,17 @@
 /* Footer */
 .footer {
   padding: var(--space-3) var(--space-4);
+  align-items: stretch;
 }
 
 .addFeedBtn {
   width: 100%;
+  min-height: 48px;
   padding: var(--space-2) var(--space-3);
   background: var(--brand-500);
   border: none;
-  border-radius: var(--radius-full);
-  color: #ffffff;
+  border-radius: var(--radius-md);
+  color: var(--brand-on-primary);
   font-size: var(--text-sm);
   font-weight: var(--weight-semi);
   cursor: pointer;
@@ -464,11 +448,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-full);
-  background: transparent;
-  border: none;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
   color: var(--text-muted);
   transition: all var(--transition-fast);
 }

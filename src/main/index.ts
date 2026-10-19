@@ -43,7 +43,7 @@ import { ArticleService }  from './services/ArticleService'
 import { SearchService }   from './services/SearchService'
 import { SettingsService } from './services/SettingsService'
 import { OpmlService }     from './services/OpmlService'
-import { SummaryService }  from './services/SummaryService'
+import { LayaService }     from './services/LayaService'
 import { LlmService }      from './services/LlmService'
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ import { Scheduler }  from './sync/Scheduler'
 import { registerFeedHandlers }     from './ipc/feeds'
 import { registerArticleHandlers }  from './ipc/articles'
 import { registerLlmHandlers, registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
+import { registerLayaHandlers } from './ipc/laya'
 
 // ─── Window helper ────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ function createWindow(): BrowserWindow {
 // ─── Application lifecycle ────────────────────────────────────────────────────
 
 let scheduler: Scheduler | null = null
-let summaryService: SummaryService | null = null
+let layaService: LayaService | null = null
 
 async function bootstrap(): Promise<void> {
   // ── 0. Adblock engine ──────────────────────────────────────────────────
@@ -263,10 +264,10 @@ async function bootstrap(): Promise<void> {
   // ── 3. Engine ────────────────────────────────────────────────────────────
   const syncEngine = new SyncEngine(feedService, articleService, db)
   scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
-  summaryService = new SummaryService(db, articleService, llmService)
+  layaService = new LayaService(db)
 
   syncEngine.onSyncComplete = () => {
-    summaryService?.trigger()
+    layaService?.trigger()
   }
 
   // ── 4. IPC ───────────────────────────────────────────────────────────────
@@ -274,7 +275,7 @@ async function bootstrap(): Promise<void> {
   registerArticleHandlers(articleService, searchService, feedService)
   registerSettingsHandlers(settingsService)
   registerLlmHandlers(llmService)
-  registerSyncHandlers(scheduler)
+  registerSyncHandlers(scheduler)`n  registerLayaHandlers(layaService)
 
   ipcMain.handle('summary:status-get', () => {
     return {
@@ -284,7 +285,7 @@ async function bootstrap(): Promise<void> {
     }
   })
   ipcMain.handle('summary:trigger', () => {
-    summaryService?.trigger()
+    layaService?.trigger()
   })
 
   ipcMain.handle('menu:toggle', (event) => {
@@ -300,7 +301,7 @@ async function bootstrap(): Promise<void> {
   })
 
   // Start background summarization
-  summaryService.start()
+  layaService.start()
 
   // ── 5. Window ────────────────────────────────────────────────────────────
   createWindow()
@@ -325,6 +326,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   scheduler?.stop()
-  summaryService?.stop()
+  layaService?.stop()
   closeDatabase()
 })

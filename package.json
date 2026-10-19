@@ -63,9 +63,7 @@
     "directories": {
       "output": "release"
     },
-    "files": [
-      "out"
-    ],
+    "files": [\n      "out"\n    ],\n    "extraResources": [\n      {\n        "from": "resources/vector_worker.py",\n        "to": "vector_worker.py"\n      }\n    ],
     "win": {
       "target": "nsis"
     },

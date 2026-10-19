@@ -176,8 +176,8 @@ const SYSTEM_VIEWS = [
     ),
   },
   {
-    type: 'digest' as const,
-    label: 'Chatbot',
+    type: 'laya' as const,
+    label: 'Laya folders',
     icon: (
       <svg
         width="15"
@@ -226,6 +226,7 @@ export function Sidebar() {
   const {
     feeds,
     groups,
+    layaFolders,
     selection,
     setSelection,
     totalUnread,
@@ -351,10 +352,10 @@ export function Sidebar() {
     return map
   }, [feeds, groups])
 
-  function selectSystemView(type: SystemView | 'digest') {
+  function selectSystemView(type: SystemView) {
     setSearchQuery('')
-    setSelection({ type: type as SystemView }) // Treat digest as a SystemView effectively
-    if (type !== 'digest' && type !== 'github') {
+    setSelection({ type })
+    if (type !== 'laya' && type !== 'github') {
       void loadArticles({
         unread_only: type === 'unread',
         saved_only: type === 'saved',
@@ -373,6 +374,12 @@ export function Sidebar() {
     setSearchQuery('')
     setSelection({ type: 'group', groupId })
     void loadArticles({ group_id: groupId })
+  }
+
+  function selectLayaFolder(folderId: number) {
+    setSearchQuery('')
+    setSelection({ type: 'laya-folder', layaFolderId: folderId })
+    void loadArticles({ laya_folder_id: folderId })
   }
 
   function handleFeedContextMenu(e: React.MouseEvent, feedId: number) {
@@ -506,7 +513,7 @@ export function Sidebar() {
               flex: 1,
               width: '100%',
               padding: '8px 28px 8px 32px',
-              borderRadius: '9999px',
+              borderRadius: 'var(--radius-md)',
               border: '1px solid transparent',
               backgroundColor: 'var(--bg-surface)',
               color: 'var(--text-primary)',
@@ -559,7 +566,7 @@ export function Sidebar() {
                 marginTop: '6px',
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border-subtle)',
-                borderRadius: '8px',
+                borderRadius: 'var(--radius-md)',
                 zIndex: 100,
                 maxHeight: '350px',
                 overflowY: 'auto',
@@ -592,7 +599,7 @@ export function Sidebar() {
                       style={{
                         padding: '8px',
                         cursor: 'pointer',
-                        borderRadius: '6px',
+                        borderRadius: 'var(--radius-sm)',
                         fontSize: '13px',
                         display: 'flex',
                         alignItems: 'center',
@@ -643,7 +650,7 @@ export function Sidebar() {
                       style={{
                         padding: '8px',
                         cursor: 'pointer',
-                        borderRadius: '6px',
+                        borderRadius: 'var(--radius-sm)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
@@ -720,6 +727,26 @@ export function Sidebar() {
         </section>
 
         <div className={styles.divider} />
+
+        {layaFolders.length > 0 && (
+          <section className={styles.section} aria-label="Dossiers Laya">
+            <div className={styles.layaHeading}>Dossiers Laya</div>
+            {layaFolders.map(folder => (
+              <button
+                key={folder.id}
+                className={`${styles.navItem} ${selection.type === 'laya-folder' && selection.layaFolderId === folder.id ? styles.active : ''}`}
+                onClick={() => selectLayaFolder(folder.id)}
+                title={folder.description || folder.name}
+              >
+                <span className={styles.navIcon}>✦</span>
+                <span className={styles.navLabel}>{folder.name}</span>
+                {(folder.article_count ?? 0) > 0 && <span className={styles.badge}>{folder.article_count}</span>}
+              </button>
+            ))}
+          </section>
+        )}
+
+        {layaFolders.length > 0 && <div className={styles.divider} />}
 
         {/* ── Feed groups & feeds ──────────────────────────── */}
         <section className={`${styles.section} ${styles.feedSection}`}>

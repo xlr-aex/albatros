@@ -49,6 +49,7 @@ export interface GithubLink {
 export interface ArticleSummary {
   id: number
   feed_id: number
+  url: string | null
   feed_title: string | null
   feed_favicon: string | null
   title: string | null
@@ -66,6 +67,7 @@ export interface ArticleListParams {
   unread_only?: boolean // If true, only return unread articles
   saved_only?: boolean // If true, only return saved articles
   today_only?: boolean // If true, only return articles from the last 24h
+  laya_folder_id?: number // Filter to articles classified into a specific Laya folder
   /** Cursor: last seen published_at value (for pagination) */
   cursor_published_at?: number
   /** Cursor: last seen article id (tie-breaker) */
@@ -148,6 +150,10 @@ export class ArticleService {
       conditions.push('a.published_at >= ?')
       bindings.push(oneDayAgo)
     }
+    if (params.laya_folder_id !== undefined) {
+      conditions.push('a.laya_folder_id = ?')
+      bindings.push(params.laya_folder_id)
+    }
 
     if (params.cursor_published_at !== undefined && params.cursor_id !== undefined) {
       conditions.push('(COALESCE(a.published_at, a.created_at) < ? OR (COALESCE(a.published_at, a.created_at) = ? AND a.id < ?))')
@@ -163,7 +169,7 @@ export class ArticleService {
         a.id, a.feed_id,
         f.title  AS feed_title,
         f.favicon_url AS feed_favicon,
-        a.title, a.author, a.excerpt, a.thumbnail_url,
+        a.url, a.title, a.author, a.excerpt, a.thumbnail_url,
         a.published_at, a.created_at, a.is_read, a.is_starred, a.is_saved
       FROM articles a
       JOIN feeds f ON f.id = a.feed_id
@@ -365,7 +371,7 @@ export class ArticleService {
     const sql = `
       SELECT
         a.id, a.feed_id, f.title AS feed_title, f.favicon_url AS feed_favicon,
-        a.title, a.author, a.excerpt, a.thumbnail_url, a.published_at, a.is_read, a.is_starred, a.is_saved
+        a.url, a.title, a.author, a.excerpt, a.thumbnail_url, a.published_at, a.is_read, a.is_starred, a.is_saved
       FROM articles a
       JOIN feeds f ON f.id = a.feed_id
       JOIN articles_fts fts ON fts.docid = a.id
@@ -375,7 +381,7 @@ export class ArticleService {
 
       SELECT
         a.id, a.feed_id, f.title AS feed_title, f.favicon_url AS feed_favicon,
-        a.title, a.author, a.excerpt, a.thumbnail_url, a.published_at, a.is_read, a.is_starred, a.is_saved
+        a.url, a.title, a.author, a.excerpt, a.thumbnail_url, a.published_at, a.is_read, a.is_starred, a.is_saved
       FROM articles a
       JOIN feeds f ON f.id = a.feed_id
       LEFT JOIN feed_groups fg ON fg.id = f.group_id

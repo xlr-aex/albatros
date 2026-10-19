@@ -36,13 +36,24 @@ export interface Feed {
 
 // ─── View types (built-in navigation entries) ─────────────────────────────────
 
-export type SystemView = 'all' | 'unread' | 'saved' | 'today' | 'github' | 'digest'
-export type SelectionType = SystemView | 'feed' | 'group' | 'search'
+export type SystemView = 'all' | 'unread' | 'saved' | 'today' | 'github' | 'laya'
+export type SelectionType = SystemView | 'feed' | 'group' | 'search' | 'laya-folder'
 
 export interface FeedSelection {
   type: SelectionType
   feedId?: number
   groupId?: number
+  layaFolderId?: number
+}
+
+export interface LayaFolder {
+  id:          number
+  name:        string
+  description: string
+  sort_order:  number
+  created_at:  number
+  article_count?: number
+  is_enabled: number
 }
 
 // ─── Store shape ──────────────────────────────────────────────────────────────
@@ -50,6 +61,7 @@ export interface FeedSelection {
 interface FeedStore {
   feeds:    Feed[]
   groups:   FeedGroup[]
+  layaFolders: LayaFolder[]
   selection: FeedSelection
   isLoading: boolean
 
@@ -69,6 +81,9 @@ interface FeedStore {
 
   setSelection: (sel: FeedSelection) => void
 
+  loadLayaFolders: () => Promise<void>
+  setLayaFolders:  (folders: LayaFolder[]) => void
+
   /** Called by the SyncEngine push event to update a single feed's counter. */
   incrementUnread: (feedId: number, by: number) => void
   decrementUnread: (feedId: number, by: number) => void
@@ -80,6 +95,7 @@ interface FeedStore {
 export const useFeedStore = create<FeedStore>((set, get) => ({
   feeds:       [],
   groups:      [],
+  layaFolders: [],
   selection:   { type: 'all' },
   isLoading:   false,
   totalUnread: 0,
@@ -143,6 +159,13 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   },
 
   setSelection: (sel) => set({ selection: sel }),
+
+  loadLayaFolders: async () => {
+    const folders = await window.api.laya.listFolders() as LayaFolder[]
+    set({ layaFolders: folders })
+  },
+
+  setLayaFolders: (folders) => set({ layaFolders: folders as LayaFolder[] }),
 
   incrementUnread: (feedId, by) => {
     set(s => ({

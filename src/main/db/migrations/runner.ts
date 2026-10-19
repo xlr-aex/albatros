@@ -76,6 +76,77 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_articles_summary_pub ON articles (summary, published_at DESC, id DESC);
     `,
   },
+  {
+    version: 7,
+    name: 'add_laya_folders',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folders (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+      ALTER TABLE articles ADD COLUMN laya_folder_id INTEGER DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_articles_laya_folder ON articles (laya_folder_id, published_at DESC, id DESC);
+    `,
+  },
+  {
+    version: 8,
+    name: 'add_laya_scope_controls',
+    sql: `
+      ALTER TABLE laya_folders ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1;
+      CREATE TABLE IF NOT EXISTS laya_feed_scopes (
+        feed_id INTEGER PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+    `,
+  },
+  {
+    version: 9,
+    name: 'make_laya_feed_scopes_per_folder',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folder_feed_scopes (
+        folder_id INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        feed_id   INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+        enabled   INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (folder_id, feed_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_folder_feed_scopes_feed
+        ON laya_folder_feed_scopes (feed_id, enabled);
+      -- Preserve the user's existing global selection for every current folder.
+      INSERT OR IGNORE INTO laya_folder_feed_scopes (folder_id, feed_id, enabled)
+      SELECT folders.id, feeds.id, COALESCE(scopes.enabled, 1)
+      FROM laya_folders AS folders
+      CROSS JOIN feeds
+      LEFT JOIN laya_feed_scopes AS scopes ON scopes.feed_id = feeds.id;
+    `,
+  },
+  {
+    version: 10,
+    name: 'make_laya_scopes_feed_groups',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folder_group_scopes (
+        folder_id INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        group_id  INTEGER NOT NULL REFERENCES feed_groups(id) ON DELETE CASCADE,
+        enabled   INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (folder_id, group_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_folder_group_scopes_group
+        ON laya_folder_group_scopes (group_id, enabled);
+      -- A group remains selected when at least one of its feeds was selected
+      -- in the previous per-feed configuration.
+      INSERT OR IGNORE INTO laya_folder_group_scopes (folder_id, group_id, enabled)
+      SELECT folders.id, groups.id,
+             CASE WHEN MAX(COALESCE(scopes.enabled, 0)) = 1 THEN 1 ELSE 0 END
+      FROM laya_folders AS folders
+      CROSS JOIN feed_groups AS groups
+      JOIN feeds ON feeds.group_id = groups.id
+      LEFT JOIN laya_folder_feed_scopes AS scopes
+        ON scopes.folder_id = folders.id AND scopes.feed_id = feeds.id
+      GROUP BY folders.id, groups.id;
+    `,
+  },
 ]
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

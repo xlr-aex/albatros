@@ -105,6 +105,36 @@ const api = {
       return () => ipcRenderer.off('summary:status', handler)
     }
   },
+
+  // ── Laya Folder Sorting ──────────────────────────────────────────────────
+  laya: {
+    listFolders:   ()                                                        => ipcRenderer.invoke('laya:folders-list'),
+    listGroupScopes: (folderId: number)                                     => ipcRenderer.invoke('laya:group-scopes-list', folderId),
+    setGroupScopes: (folderId: number, groupIds: number[])                  => ipcRenderer.invoke('laya:group-scopes-set', folderId, groupIds),
+    listFeedScopes: (folderId: number)                                      => ipcRenderer.invoke('laya:feed-scopes-list', folderId),
+    setFeedScopes: (folderId: number, feedIds: number[])                    => ipcRenderer.invoke('laya:feed-scopes-set', folderId, feedIds),
+    createFolder:  (name: string, description: string)                       => ipcRenderer.invoke('laya:folder-create', name, description),
+    updateFolder:  (id: number, patch: { name?: string; description?: string; is_enabled?: boolean }) => ipcRenderer.invoke('laya:folder-update', id, patch),
+    deleteFolder:  (id: number)                                              => ipcRenderer.invoke('laya:folder-delete', id),
+    getStatus:     ()                                                        => ipcRenderer.invoke('laya:status-get'),
+    trigger:       ()                                                        => ipcRenderer.invoke('laya:trigger'),
+    pause:         ()                                                        => ipcRenderer.invoke('laya:pause'),
+    resume:        ()                                                        => ipcRenderer.invoke('laya:resume'),
+    resetAll:      ()                                                        => ipcRenderer.invoke('laya:reset-all'),
+    resetFolderScope: (folderId: number)                                    => ipcRenderer.invoke('laya:reset-folder-scope', folderId),
+
+    onStatus: (cb: (payload: { pending: number; total: number; processed: number; scopeTotal: number; folderProgress: Record<number, { processed: number; total: number }>; isProcessing: boolean; isPaused: boolean; workerReady: boolean; folderCount: number; workerError: string | null }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => cb(payload as Parameters<typeof cb>[0])
+      ipcRenderer.on('laya:status', handler)
+      return () => { ipcRenderer.off('laya:status', handler) }
+    },
+    onFolders: (cb: (folders: unknown[]) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, folders: unknown) => cb(folders as unknown[])
+      ipcRenderer.on('laya:folders', handler)
+      return () => { ipcRenderer.off('laya:folders', handler) }
+    },
+  },
+
   debug: {
     log: (msg: string) => ipcRenderer.send('debug:log', msg)
   },

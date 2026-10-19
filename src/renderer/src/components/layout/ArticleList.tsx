@@ -105,7 +105,8 @@ export function ArticleList() {
   // ── Panel title ─────────────────────────────────────────────────────────────
   const feeds = useFeedStore(s => s.feeds)
   const groups = useFeedStore(s => s.groups)
-  const panelTitle = getPanelTitle(selection, feeds, groups)
+  const layaFolders = useFeedStore(s => s.layaFolders)
+  const panelTitle = getPanelTitle(selection, feeds, groups, layaFolders)
 
   return (
     <div className={styles.panel}>
@@ -205,6 +206,7 @@ function getPanelTitle(
   selection: ReturnType<typeof useFeedStore.getState>['selection'],
   feeds: ReturnType<typeof useFeedStore.getState>['feeds'],
   groups: ReturnType<typeof useFeedStore.getState>['groups'],
+  layaFolders: ReturnType<typeof useFeedStore.getState>['layaFolders'],
 ): string {
   switch (selection.type) {
     case 'all':     return 'All Items'
@@ -213,6 +215,7 @@ function getPanelTitle(
     case 'today':   return 'Today'
     case 'feed':    return feeds.find(f => f.id === selection.feedId)?.title ?? 'Feed'
     case 'group':   return groups.find(g => g.id === selection.groupId)?.name ?? 'Folder'
+    case 'laya-folder': return layaFolders.find(f => f.id === selection.layaFolderId)?.name ?? 'Dossier Laya'
     default: return 'Items'
   }
 }
