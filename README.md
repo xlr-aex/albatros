@@ -25,7 +25,6 @@
 
 <img width="1917" height="977" alt="image" src="https://github.com/user-attachments/assets/5ceaf7f3-2e58-4432-b1c4-f681dd6d75a2" />
 
-
 ---
 
 Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and local Laya sorting—without requiring an account or hosted backend.
@@ -91,6 +90,8 @@ Laya folders sort new posts locally according to rules you define. Create a fold
 The first use on Windows downloads a private Python runtime and the local Laya dependencies into Albatros’ application-data directory. Nothing is installed system-wide. See [Laya folders](docs/laya-folders.md) for scope rules, controls and troubleshooting.
 
 <img width="1892" height="667" alt="image" src="https://github.com/user-attachments/assets/397b9709-1a84-43c7-bb09-8a63df8967ca" />
+
+<img width="1917" height="1012" alt="image" src="https://github.com/user-attachments/assets/a928dea5-781a-4645-b898-ce14f186eff0" />
 
 
 ## Keyboard navigation
