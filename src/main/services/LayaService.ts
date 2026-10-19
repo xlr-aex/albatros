@@ -174,10 +174,10 @@ function articleText(article: ArticleRow): string {
 /** Convert the guided natural-language fields into concise contrastive criteria. */
 function parseFolderPrompt(description: string): { topic: string; include: string; exclude: string } {
   description = sanitizeUtf16(description)
-  const read = (label: string) => new RegExp(`${label}\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Sujet principal|Inclure notamment|Exclure explicitement)\\s*:|$)`, 'i').exec(description)?.[1]?.trim() ?? ''
-  const topic = read('Sujet principal')
+  const read = (labels: string[]) => new RegExp(`(?:${labels.join('|')})\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Main topic|Include|Exclude|Sujet principal|Inclure notamment|Exclure explicitement)\\s*:|$)`, 'i').exec(description)?.[1]?.trim() ?? ''
+  const topic = read(['Main topic', 'Sujet principal'])
   return topic
-    ? { topic, include: read('Inclure notamment'), exclude: read('Exclure explicitement') }
+    ? { topic, include: read(['Include', 'Inclure notamment']), exclude: read(['Exclude', 'Exclure explicitement']) }
     : { topic: description.trim(), include: '', exclude: '' }
 }
 
@@ -220,10 +220,10 @@ function buildLayaQuestions(
       return [key, {
         type: 'noul',
         criteria: {
-          false: `Hors sujet : le sujet principal ne concerne pas ${rule.topic}.${rule.exclude ? ` Exclure explicitement : ${rule.exclude}.` : ''}`,
-          true: `Sujet principal : ${rule.topic}.${rule.include ? ` Inclure notamment : ${rule.include}.` : ''}`,
+          false: `Out of scope: the main topic is not about ${rule.topic}.${rule.exclude ? ` Explicitly exclude: ${rule.exclude}.` : ''}`,
+          true: `Main topic: ${rule.topic}.${rule.include ? ` Include: ${rule.include}.` : ''}`,
         },
-        instructions: `Décision stricte pour « ${folder.name} » : accepter seulement si le sujet central satisfait le critère positif. Refuser une simple mention et toute exclusion explicite.`,
+        instructions: `Strict decision for “${folder.name}”: accept only when the central topic matches the positive criterion. Reject a passing mention and any explicit exclusion.`,
       }]
     })),
   }
@@ -564,7 +564,7 @@ export class LayaService {
   /** Starts the local Laya HTTP worker when it is not already running. */
   private startLocalWorker(): void {
     if (this.worker || this.runtimeStart) return
-    this.workerError = 'Préparation de Laya pour le premier lancement…'
+    this.workerError = 'Preparing Laya for its first run…'
     this.broadcastStatus()
     this.runtimeStart = this.runtime.ensure().then(python => {
       if (!this.isRunning) return
@@ -590,7 +590,7 @@ export class LayaService {
       this.worker = worker
       this.workerReady = false
       worker.on('error', error => {
-        this.workerError = `Impossible de démarrer Laya localement : ${error.message}`
+        this.workerError = `Could not start Laya locally: ${error.message}`
         this.worker = null
         this.workerReady = false
         console.error('[LayaService]', this.workerError)
@@ -599,13 +599,13 @@ export class LayaService {
         if (!this.isRunning) return
         this.worker = null
         this.workerReady = false
-        this.workerError = `Le worker Laya local s'est arrêté (${signal ?? `code ${code ?? 'inconnu'}`}).`
+      this.workerError = `The local Laya worker stopped (${signal ?? `code ${code ?? 'unknown'}`}).`
         console.error('[LayaService]', this.workerError)
       })
       worker.stderr.on('data', data => console.warn(`[Laya local] ${String(data).trim()}`))
       if (USE_VECTOR_FILTER) this.startVectorWorker(python)
     }).catch(error => {
-      this.workerError = `Impossible de démarrer Laya localement : ${(error as Error).message}`
+      this.workerError = `Could not start Laya locally: ${(error as Error).message}`
       console.error('[LayaService]', this.workerError)
     }).finally(() => { this.runtimeStart = null })
   }

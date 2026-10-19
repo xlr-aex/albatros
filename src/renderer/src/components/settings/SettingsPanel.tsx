@@ -48,8 +48,8 @@ const DEFAULTS: Settings = {
 type TabId = 'appearance' | 'reading' | 'ai'
 
 const TABS: { id: TabId; icon: string; label: string }[] = [
-  { id: 'appearance', icon: '🎨', label: 'Apparence' },
-  { id: 'reading',    icon: '📖', label: 'Lecture & Sync' },
+  { id: 'appearance', icon: '🎨', label: 'Appearance' },
+  { id: 'reading',    icon: '📖', label: 'Reading & Sync' },
   { id: 'ai',        icon: '✦',  label: 'IA & Modèles' },
 ]
 
@@ -170,17 +170,17 @@ export function SettingsPanel({ onClose }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
     >
-      <div className={styles.panel} role="dialog" aria-modal="true" aria-label="Paramètres">
+      <div className={styles.panel} role="dialog" aria-modal="true" aria-label="Settings">
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className={styles.header}>
-          <h2 className={styles.headerTitle}>⚙ Paramètres</h2>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">✕</button>
+          <h2 className={styles.headerTitle}>⚙ Settings</h2>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         {/* ── Body: sidebar tabs + content ───────────────────────── */}
         <div className={styles.body}>
           {/* Vertical tab sidebar */}
-          <nav className={styles.tabSidebar} aria-label="Catégories de paramètres">
+          <nav className={styles.tabSidebar} aria-label="Settings categories">
             {TABS.map(tab => (
               <button
                 key={tab.id}
@@ -202,12 +202,12 @@ export function SettingsPanel({ onClose }: Props) {
             {activeTab === 'appearance' && (
               <>
                 <div className={styles.section}>
-                  <div className={styles.sectionTitle}>Thème</div>
+                  <div className={styles.sectionTitle}>Theme</div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
-                      <div className={styles.rowName}>Mode d'affichage</div>
-                      <div className={styles.rowDesc}>Choisissez entre le mode clair et sombre</div>
+                      <div className={styles.rowName}>Display mode</div>
+                      <div className={styles.rowDesc}>Choose between light and dark mode</div>
                     </div>
                     <div className={styles.segmentedControl}>
                       <button
@@ -215,14 +215,14 @@ export function SettingsPanel({ onClose }: Props) {
                         onClick={() => update('theme', 'light')}
                         aria-pressed={settings.theme === 'light'}
                       >
-                        <span className={styles.segmentIcon}>☀️</span> Clair
+                        <span className={styles.segmentIcon}>☀️</span> Light
                       </button>
                       <button
                         className={`${styles.segmentBtn} ${settings.theme === 'dark' ? styles.segmentBtnActive : ''}`}
                         onClick={() => update('theme', 'dark')}
                         aria-pressed={settings.theme === 'dark'}
                       >
-                        <span className={styles.segmentIcon}>🌙</span> Sombre
+                        <span className={styles.segmentIcon}>🌙</span> Dark
                       </button>
                     </div>
                   </div>
@@ -230,15 +230,15 @@ export function SettingsPanel({ onClose }: Props) {
                   {/* Color palette — only pre-validated accessible swatches */}
                   <div className={styles.row} style={{ alignItems: 'flex-start' }}>
                     <div className={styles.rowLabel} style={{ marginTop: '4px' }}>
-                      <div className={styles.rowName}>Couleur d'accentuation</div>
-                      <div className={styles.rowDesc}>Palette validée WCAG — contraste ≥ 4.5:1 garanti</div>
+                      <div className={styles.rowName}>Accent color</div>
+                      <div className={styles.rowDesc}>WCAG-validated palette — 4.5:1 contrast guaranteed</div>
                     </div>
                     <div className={styles.colorPalette}>
                       {Object.entries(ACCENT_COLORS).map(([colorName, hexes]) => (
                         <button
                           key={colorName}
                           title={colorName}
-                          aria-label={`Couleur: ${colorName}`}
+                          aria-label={`Color: ${colorName}`}
                           aria-pressed={settings.accent_color === colorName}
                           className={`${styles.colorSwatch} ${settings.accent_color === colorName ? styles.colorSwatchActive : ''}`}
                           style={{ '--swatch-color': hexes[500] } as React.CSSProperties}
@@ -252,20 +252,20 @@ export function SettingsPanel({ onClose }: Props) {
                 </div>
 
                 <div className={styles.section}>
-                  <div className={styles.sectionTitle}>Typographie</div>
+                  <div className={styles.sectionTitle}>Typography</div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
                       <div className={styles.rowName}>
-                        Taille de l'interface <span className={styles.fontValue}>{settings.ui_font_size}px</span>
+                        Interface size <span className={styles.fontValue}>{settings.ui_font_size}px</span>
                       </div>
-                      <div className={styles.rowDesc}>Éléments de navigation et de contrôle</div>
+                      <div className={styles.rowDesc}>Navigation and control elements</div>
                     </div>
                     <input
                       type="range" className={styles.slider}
                       min="12" max="24" step="1"
                       value={settings.ui_font_size}
-                      aria-label={`Taille interface: ${settings.ui_font_size}px`}
+                      aria-label={`Interface size: ${settings.ui_font_size}px`}
                       onChange={e => update('ui_font_size', e.target.value)}
                     />
                   </div>
@@ -273,24 +273,24 @@ export function SettingsPanel({ onClose }: Props) {
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
                       <div className={styles.rowName}>
-                        Taille du texte <span className={styles.fontValue}>{settings.font_size}px</span>
+                        Text size <span className={styles.fontValue}>{settings.font_size}px</span>
                       </div>
-                      <div className={styles.rowDesc}>Contenu des articles en lecture</div>
+                      <div className={styles.rowDesc}>Article content while reading</div>
                     </div>
                     <input
                       type="range" className={styles.slider}
                       min="12" max="36" step="1"
                       value={settings.font_size}
-                      aria-label={`Taille texte: ${settings.font_size}px`}
+                      aria-label={`Text size: ${settings.font_size}px`}
                       onChange={e => update('font_size', e.target.value)}
                     />
                   </div>
 
                   {/* Live preview */}
                   <div style={{ marginTop: '8px', padding: '16px', border: '1px solid var(--border-subtle)', borderRadius: '8px', background: 'var(--bg-base)' }}>
-                    <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>Aperçu du texte</div>
+                    <div style={{ fontSize: 'var(--ui-font-size, 16px)', color: 'var(--text-secondary)', marginBottom: '8px' }}>Text preview</div>
                     <div style={{ fontSize: 'var(--article-font-size, 16px)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                      Portez ce vieux whisky au juge blond qui fume.
+                      The quick brown fox jumps over the lazy dog.
                     </div>
                   </div>
                 </div>
@@ -301,12 +301,12 @@ export function SettingsPanel({ onClose }: Props) {
             {activeTab === 'reading' && (
               <>
                 <div className={styles.section}>
-                  <div className={styles.sectionTitle}>Lecture</div>
+                  <div className={styles.sectionTitle}>Reading</div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
-                      <div className={styles.rowName}>Marquer comme lu à l'ouverture</div>
-                      <div className={styles.rowDesc}>Marquer automatiquement les articles comme lus lors de leur ouverture</div>
+                      <div className={styles.rowName}>Mark as read on open</div>
+                      <div className={styles.rowDesc}>Automatically mark articles as read when opened</div>
                     </div>
                     <div
                       className={`${styles.toggle} ${settings.mark_read_on_open === '1' ? styles.toggleOn : ''}`}
@@ -314,41 +314,41 @@ export function SettingsPanel({ onClose }: Props) {
                       onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); update('mark_read_on_open', settings.mark_read_on_open === '1' ? '0' : '1') } }}
                       role="switch" tabIndex={0}
                       aria-checked={settings.mark_read_on_open === '1'}
-                      aria-label="Marquer comme lu à l'ouverture"
+                      aria-label="Mark as read on open"
                     />
                   </div>
                 </div>
 
                 <div className={styles.section}>
-                  <div className={styles.sectionTitle}>Synchronisation & Stockage</div>
+                  <div className={styles.sectionTitle}>Sync & Storage</div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
-                      <div className={styles.rowName}>Intervalle de rafraîchissement</div>
-                      <div className={styles.rowDesc}>Fréquence de vérification des nouveaux articles</div>
+                      <div className={styles.rowName}>Refresh interval</div>
+                      <div className={styles.rowDesc}>How often to check for new articles</div>
                     </div>
                     <select className={styles.select} value={settings.default_interval_sec} onChange={e => update('default_interval_sec', e.target.value)}>
                       <option value="300">5 minutes</option>
                       <option value="600">10 minutes</option>
                       <option value="900">15 minutes</option>
                       <option value="1800">30 minutes</option>
-                      <option value="3600">1 heure</option>
-                      <option value="7200">2 heures</option>
+                      <option value="3600">1 hour</option>
+                      <option value="7200">2 hours</option>
                     </select>
                   </div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
-                      <div className={styles.rowName}>Conservation des articles</div>
-                      <div className={styles.rowDesc}>Supprimer les articles plus anciens que ce nombre de jours</div>
+                      <div className={styles.rowName}>Article retention</div>
+                      <div className={styles.rowDesc}>Delete articles older than this number of days</div>
                     </div>
                     <input type="number" className={styles.input} value={settings.retention_days} min={1} max={365} onChange={e => update('retention_days', e.target.value)} />
                   </div>
 
                   <div className={styles.row}>
                     <div className={styles.rowLabel}>
-                      <div className={styles.rowName}>Articles max par flux</div>
-                      <div className={styles.rowDesc}>Nombre maximum d'articles stockés par flux</div>
+                      <div className={styles.rowName}>Maximum articles per feed</div>
+                      <div className={styles.rowDesc}>Maximum number of stored articles per feed</div>
                     </div>
                     <input type="number" className={styles.input} value={settings.max_articles_per_feed} min={50} max={5000} step={50} onChange={e => update('max_articles_per_feed', e.target.value)} />
                   </div>
