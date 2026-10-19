@@ -18,7 +18,7 @@
 
   <br />
 
-  [Features](#features) · [Installation](#installation) · [Local AI](#local-ai) · [Documentation](#documentation)
+  [Features](#features) · [Installation](#installation) · [Local Laya folders](#local-laya-folders) · [Documentation](#documentation)
 </div>
 
 ---
@@ -27,7 +27,7 @@
 
 ---
 
-Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and optional local AI—without requiring an account or hosted backend.
+Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and local Laya sorting—without requiring an account or hosted backend.
 
 ## Features
 
@@ -65,20 +65,9 @@ npm run dev
 
 </div>
 
-## Local AI
-
-AI features are optional and connect directly to a model running on your machine.
-
-| Provider | Default address |
-|---|---|
-| Ollama | `http://127.0.0.1:11434` |
-| LM Studio | `http://127.0.0.1:1234` |
-
-Select the provider, URL and model in Albatros settings. The reader continues to work normally when no model is running.
-
 ## Local Laya folders
 
-Laya folders sort new posts locally according to rules you define. Create a folder from **Laya folders**, select its source groups or individual feeds, then let the background worker classify new posts. The top gauge shows overall progress; each folder card shows its own source-scope progress.
+Laya folders sort new posts locally according to rules you define. Create a folder from **Laya folders**, select its source groups or individual feeds, then let the background worker classify new posts. The top gauge shows overall progress; each folder card shows its own source-scope progress. The former Chatbot and external local-model configuration are no longer part of Albatros.
 
 The first use on Windows downloads a private Python runtime and the local Laya dependencies into Albatros’ application-data directory. Nothing is installed system-wide. See [Laya folders](docs/laya-folders.md) for scope rules, controls and troubleshooting.
 
