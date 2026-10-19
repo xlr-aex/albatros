@@ -38,12 +38,12 @@ Albatros keeps subscriptions, downloaded articles and reading state on your comp
 | Saved posts and full-text search | Lazy loading with reliable fallbacks |
 | Offline access to downloaded content | Embedded browser with ad blocking |
 
-| Sync | Privacy |
+| Sync | Local classification |
 |---|---|
 | RSS, Atom, JSON Feed and Reddit | Local SQLite database |
 | Adaptive scheduling and HTTP caching | No telemetry |
 | Rate-limit-aware Reddit queue | No Albatros cloud service |
-| OPML import and export | Optional local-only AI providers |
+| OPML import and export | Laya folders and on-device sorting |
 
 ## Installation
 
@@ -76,6 +76,12 @@ AI features are optional and connect directly to a model running on your machine
 
 Select the provider, URL and model in Albatros settings. The reader continues to work normally when no model is running.
 
+## Local Laya folders
+
+Laya folders sort new posts locally according to rules you define. Create a folder from **Laya folders**, select its source groups or individual feeds, then let the background worker classify new posts. The top gauge shows overall progress; each folder card shows its own source-scope progress.
+
+The first use on Windows downloads a private Python runtime and the local Laya dependencies into Albatros’ application-data directory. Nothing is installed system-wide. See [Laya folders](docs/laya-folders.md) for scope rules, controls and troubleshooting.
+
 ## Keyboard navigation
 
 | Previous article | Next article | Close dialog |
@@ -88,7 +94,7 @@ Select the provider, URL and model in Albatros settings. The reader continues to
 |---|---|---|
 | [Documentation overview](DOCUMENTATION.md) | [Development](docs/development.md) | [Troubleshooting](docs/troubleshooting.md) |
 | [UI and accessibility](docs/ui-ux.md) | [Sync engine](docs/sync-engine.md) | [Media and Reddit](docs/media-and-reddit.md) |
-| | [Database](docs/database.md) · [IPC API](docs/api-ipc.md) | |
+| [Laya folders](docs/laya-folders.md) | [Database](docs/database.md) · [IPC API](docs/api-ipc.md) | |
 
 ## Data and privacy
 

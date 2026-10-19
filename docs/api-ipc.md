@@ -105,6 +105,21 @@ The main process is the source of truth for AI configuration; the renderer never
 
 The summary worker processes recent (14 days) or unread articles one at a time, backs off when the local model is offline, and permanently skips an article after three failed attempts so one malformed entry cannot stall the queue.
 
+## `window.api.laya`
+
+| Method | Arguments | Result | Notes |
+|---|---|---|---|
+| `listFolders()` | — | `Promise<LayaFolder[]>` | Folders with their assigned-post count and enabled state. |
+| `createFolder(name, description)` | strings | `Promise<LayaFolder>` | Creates a local classification rule. |
+| `updateFolder(id, patch)` / `deleteFolder(id)` | id and patch / id | `Promise<void>` | Edits state or deletes the rule. |
+| `listGroupScopes(id)` / `setGroupScopes(id, ids)` | folder id, optional group ids | `Promise<LayaGroupScope[]>` / `Promise<void>` | A selected group includes all of its feeds. |
+| `listFeedScopes(id)` / `setFeedScopes(id, ids)` | folder id, optional feed ids | `Promise<LayaFeedScope[]>` / `Promise<void>` | Individual feeds supplement selected groups. |
+| `getStatus()` / `onStatus(callback)` | — / callback | status / unsubscribe | Overall and per-folder progress, worker state and errors. |
+| `trigger()` / `pause()` / `resume()` | — | `Promise<void>` | Controls background classification. |
+| `resetFolderScope(id)` | folder id | `Promise<void>` | Requeues posts from that folder’s selected sources. |
+
+The status payload contains `processed`, `scopeTotal` and a `folderProgress` map keyed by folder id. An article is counted as processed once Laya stores either a matching folder or a no-match decision.
+
 ## `window.api.debug`
 
 `debug.log(message)` sends renderer diagnostics to the main-process console. Do not send credentials, complete article bodies or personal model prompts through this convenience channel.

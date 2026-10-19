@@ -10,7 +10,7 @@ Albatros is an Electron desktop feed reader with a React renderer and a native S
 2. **Responsive reading** — list queries are indexed, large lists are virtualised and media loads lazily.
 3. **Resilient ingestion** — feeds are fetched conditionally, retried conservatively and scheduled adaptively.
 4. **Untrusted-content isolation** — feed HTML is treated as hostile and sanitised at the rendering boundary.
-5. **Optional local intelligence** — Ollama and LM Studio can provide digest and summary features without an Albatros cloud service.
+5. **Optional local intelligence** — Ollama and LM Studio can provide digest and summary features, while Laya can classify posts into local folders without an Albatros cloud service.
 
 ## Architecture
 
@@ -70,6 +70,7 @@ Selecting an article follows the reverse read path: React invokes `window.api.ar
 | [IPC API](docs/api-ipc.md) | Full-stack contributors | Complete `window.api` contract and push-event payloads. |
 | [Media and Reddit](docs/media-and-reddit.md) | Reader/media contributors | Images, lazy sources, Reddit JSON/comments, HLS video and fallbacks. |
 | [UI/UX](docs/ui-ux.md) | Renderer contributors | Three-pane interaction, state, accessibility and motion. |
+| [Laya folders](docs/laya-folders.md) | Users and contributors | Local classifier, source scopes, progress and runtime behaviour. |
 | [Troubleshooting](docs/troubleshooting.md) | Users/operators | Electron installation, SQLite bindings, HTTP 429, media and AI issues. |
 
 ## Security boundaries and limitations
