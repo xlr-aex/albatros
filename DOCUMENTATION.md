@@ -10,7 +10,7 @@ Albatros is an Electron desktop feed reader with a React renderer and a native S
 2. **Responsive reading** — list queries are indexed, large lists are virtualised and media loads lazily.
 3. **Resilient ingestion** — feeds are fetched conditionally, retried conservatively and scheduled adaptively.
 4. **Untrusted-content isolation** — feed HTML is treated as hostile and sanitised at the rendering boundary.
-5. **Optional local intelligence** — Ollama and LM Studio can provide digest and summary features, while Laya can classify posts into local folders without an Albatros cloud service.
+5. **Local classification** — Laya sorts posts into local folders without an Albatros cloud service or an external model runtime.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Albatros is an Electron desktop feed reader with a React renderer and a native S
 The main process owns privileged operations:
 
 - opens and migrates `albatros.db` through `better-sqlite3`;
-- provides feed, article, search, settings and summary services;
+- provides feed, article, search and settings services;
 - downloads and parses RSS, Atom and JSON feeds;
 - schedules background refresh and retention maintenance;
 - handles OPML file dialogs;
@@ -71,17 +71,16 @@ Selecting an article follows the reverse read path: React invokes `window.api.ar
 | [Media and Reddit](docs/media-and-reddit.md) | Reader/media contributors | Images, lazy sources, Reddit JSON/comments, HLS video and fallbacks. |
 | [UI/UX](docs/ui-ux.md) | Renderer contributors | Three-pane interaction, state, accessibility and motion. |
 | [Laya folders](docs/laya-folders.md) | Users and contributors | Local classifier, source scopes, progress and runtime behaviour. |
-| [Troubleshooting](docs/troubleshooting.md) | Users/operators | Electron installation, SQLite bindings, HTTP 429, media and AI issues. |
+| [Troubleshooting](docs/troubleshooting.md) | Users/operators | Electron installation, SQLite bindings, HTTP 429 and media issues. |
 
 ## Security boundaries and limitations
 
-- Feed URL validation blocks obvious private and loopback hosts, but it is a lightweight hostname/IP-prefix guard rather than a DNS-rebinding-proof network sandbox.
+- Feed URL validation rejects non-HTTP(S), credential-bearing, local, private, link-local and cloud-metadata destinations. DNS is checked before every initial request and redirect.
 - The renderer has `contextIsolation` enabled and `nodeIntegration` disabled.
 - Article HTML is stored raw and sanitised at render time. Code must never render `content_html` without DOMPurify.
 - Embedded web content is less trusted than the application UI and is isolated in a dedicated partition; header rewriting for Reddit is deliberately scoped to Reddit/Reddit media domains.
 - Electron registers a single listener per `webRequest` event: any new `onHeadersReceived`/`onBeforeRequest` registration on `persist:adblock` silently replaces the adblocker's (or the Reddit bypass's) handler. Check `src/main/index.ts` before adding one.
-- `webSecurity` is currently disabled on the main application window to support local AI/browser workflows. Contributors should not treat the renderer as a safe place for secrets.
-- AI provider URLs are user-configured local endpoints. Albatros does not authenticate, host or proxy them.
+- `webSecurity` is enabled on the main application window. Privileged network and filesystem operations stay in the main process.
 
 ## Documentation maintenance
 

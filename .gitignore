@@ -7,6 +7,14 @@ dist-electron/
 out/
 release/
 *.tsbuildinfo
+electron.vite.*.mjs
+
+# Local analysis and platform build caches
+graphify-out/
+graphify-out-stale-*/
+.gradle-android/
+**/__pycache__/
+*.py[cod]
 
 # Logs
 *.log

@@ -4,20 +4,20 @@
  * Laya folders using a local Laya /v1/systemone worker.
  *
  * Strategy:
- *  - Articles without a laya_folder_id (or with laya_folder_id = 0 meaning
- *    "unclassified") are queued for classification.
+ *  - Every eligible article/folder pair is classified independently, so an
+ *    article can appear in several folders.
  *  - Classification runs in parallel batches (p-limit concurrency 5) to
  *    maximise throughput without hammering the API.
  *  - Results are persisted immediately to SQLite so they survive restarts.
  *  - Only new/changed posts need re-classification; already-classified
  *    articles are skipped unless folders change.
- *  - When a folder is created, updated or deleted, pending = all articles
- *    where laya_folder_id IS NULL (i.e. never classified).
- *    Already-classified articles keep their assignment unless explicitly reset.
+ *  - Results are stored as auditable memberships. Reclassification clears
+ *    only the target folder's decisions.
  */
 
 import type { Database } from 'better-sqlite3'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fetch from 'cross-fetch'
 import { app, BrowserWindow } from 'electron'
@@ -46,7 +46,6 @@ const MAX_ATTEMPTS  = 3          // skip article after this many failures
 // threshold deliberately conservative: wrongly filing an article is worse
 // than leaving it in the general inbox.
 const MIN_RELEVANCE_SCORE = 0.70
-const MIN_SCORE_MARGIN = 0.08
 const KEYWORD_ASSISTED_SCORE = 0.52
 const VECTOR_MIN_SIMILARITY = 0.35
 const FOLDER_STOP_WORDS = new Set([
@@ -103,6 +102,13 @@ interface LayaResponse {
 
 interface LayaBatchResponse {
   results: LayaResponse[]
+}
+
+type MembershipDecision = {
+  folder: LayaFolder
+  score: number
+  decision: 'include' | 'exclude' | 'uncertain'
+  evidence: string
 }
 
 /**
@@ -229,30 +235,34 @@ function buildLayaQuestions(
   }
 }
 
-function resolveFolder(
+export function resolveFolderDecisions(
   data: LayaResponse,
   article: ArticleRow,
   folderQuestions: { key: string; folder: LayaFolder }[],
-): LayaFolder | null {
-  const ranked = folderQuestions
-    .map(({ key, folder }) => ({ folder, score: Number(data.answers?.[key]?.noul ?? 0) }))
-    .filter(result => Number.isFinite(result.score))
-    .sort((a, b) => b.score - a.score)
-
-  const best = ranked[0]
-  const runnerUp = ranked[1]
-  if (!best) return null
-  if (runnerUp && best.score - runnerUp.score < MIN_SCORE_MARGIN) return null
-  const keywordAssistedMatch = best.score >= KEYWORD_ASSISTED_SCORE && hasDirectFolderKeyword(article, best.folder)
-  if (best.score < MIN_RELEVANCE_SCORE && !keywordAssistedMatch) return null
-  return best.folder
+): MembershipDecision[] {
+  return folderQuestions.map(({ key, folder }) => {
+    const rawScore = Number(data.answers?.[key]?.noul ?? 0)
+    const score = Number.isFinite(rawScore) ? rawScore : 0
+    const keywordMatch = score >= KEYWORD_ASSISTED_SCORE && hasDirectFolderKeyword(article, folder)
+    const decision = score >= MIN_RELEVANCE_SCORE || keywordMatch
+      ? 'include'
+      : score >= KEYWORD_ASSISTED_SCORE
+        ? 'uncertain'
+        : 'exclude'
+    return {
+      folder,
+      score,
+      decision,
+      evidence: JSON.stringify({ score, keywordMatch, threshold: MIN_RELEVANCE_SCORE }),
+    }
+  })
 }
 
 async function classifyArticlesBatch(
   articles: ArticleRow[],
   folders: LayaFolder[],
   signal: AbortSignal,
-): Promise<(LayaFolder | null)[]> {
+): Promise<MembershipDecision[][]> {
   const { questions, folderQuestions } = buildLayaQuestions(folders)
   const payload = {
     model: 'multilingual',
@@ -276,7 +286,7 @@ async function classifyArticlesBatch(
 
   const data = await res.json() as LayaBatchResponse
   if (data.results.length !== articles.length) throw new Error('Laya batch response is incomplete')
-  return data.results.map((result, index) => resolveFolder(result, articles[index], folderQuestions))
+  return data.results.map((result, index) => resolveFolderDecisions(result, articles[index], folderQuestions))
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -362,7 +372,7 @@ export class LayaService {
   /** Force-reclassify all articles (e.g. after folder list changes). */
   resetAll(): void {
     try {
-      this.db.prepare('UPDATE articles SET laya_folder_id = NULL WHERE laya_folder_id IS NOT NULL').run()
+      this.db.prepare('DELETE FROM article_laya_memberships').run()
       this.failedAttempts.clear()
       console.log('[LayaService] Reset all article classifications.')
     } catch (err) {
@@ -377,10 +387,11 @@ export class LayaService {
       const feedIds = this.getEnabledFeedIds(folderId)
       if (!feedIds.length) return
       this.db.prepare(`
-        UPDATE articles SET laya_folder_id = NULL
-        WHERE feed_id IN (${feedIds.map(() => '?').join(',')})
-          AND (laya_folder_id = ? OR laya_folder_id = -1)
-      `).run(...feedIds, folderId)
+        DELETE FROM article_laya_memberships
+        WHERE folder_id = ? AND article_id IN (
+          SELECT id FROM articles WHERE feed_id IN (${feedIds.map(() => '?').join(',')})
+        )
+      `).run(folderId, ...feedIds)
       this.failedAttempts.clear()
       console.log(`[LayaService] Reset classifications in folder ${folderId} scope.`)
     } catch (err) {
@@ -396,9 +407,10 @@ export class LayaService {
     return this.db
       .prepare(`
         SELECT f.id, f.name, f.description, f.sort_order, f.created_at, f.is_enabled,
-               COUNT(a.id) AS article_count
+               COUNT(memberships.article_id) AS article_count
         FROM laya_folders f
-        LEFT JOIN articles a ON a.laya_folder_id = f.id
+        LEFT JOIN article_laya_memberships memberships
+          ON memberships.folder_id = f.id AND memberships.decision = 'include'
         GROUP BY f.id
         ORDER BY f.sort_order ASC, f.id ASC
       `)
@@ -485,8 +497,6 @@ export class LayaService {
 
   deleteFolder(id: number): void {
     this.db.prepare('DELETE FROM laya_folders WHERE id = ?').run(id)
-    // Un-assign articles that were in this folder
-    this.db.prepare('UPDATE articles SET laya_folder_id = NULL WHERE laya_folder_id = ?').run(id)
     this.broadcastFolders()
     this.trigger()
   }
@@ -494,23 +504,23 @@ export class LayaService {
   getPendingCount(): number {
     if (!this.getEnabledFolders().length) return 0
     const blockedIds = this.getBlockedIds()
-    const clause     = blockedIds.length ? `AND id NOT IN (${blockedIds.map(() => '?').join(',')})` : ''
+    const clause     = blockedIds.length ? `AND articles.id NOT IN (${blockedIds.map(() => '?').join(',')})` : ''
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count FROM articles
-      WHERE laya_folder_id IS NULL
-        AND EXISTS (
-          SELECT 1 FROM laya_folders folders
-          WHERE folders.is_enabled = 1 AND (
-            EXISTS (
-              SELECT 1 FROM feeds scoped_feeds
-              JOIN laya_folder_group_scopes scopes ON scopes.group_id = scoped_feeds.group_id
-              WHERE scopes.folder_id = folders.id AND scoped_feeds.id = articles.feed_id AND scopes.enabled = 1
-            ) OR EXISTS (
-              SELECT 1 FROM laya_folder_feed_scopes scopes
-              WHERE scopes.folder_id = folders.id AND scopes.feed_id = articles.feed_id AND scopes.enabled = 1
-            )
-          )
-        ) ${clause}
+      JOIN laya_folders folders ON folders.is_enabled = 1
+      WHERE NOT EXISTS (
+        SELECT 1 FROM article_laya_memberships memberships
+        WHERE memberships.article_id = articles.id AND memberships.folder_id = folders.id
+      ) AND (
+        EXISTS (
+          SELECT 1 FROM feeds scoped_feeds
+          JOIN laya_folder_group_scopes scopes ON scopes.group_id = scoped_feeds.group_id
+          WHERE scopes.folder_id = folders.id AND scoped_feeds.id = articles.feed_id AND scopes.enabled = 1
+        ) OR EXISTS (
+          SELECT 1 FROM laya_folder_feed_scopes scopes
+          WHERE scopes.folder_id = folders.id AND scopes.feed_id = articles.feed_id AND scopes.enabled = 1
+        )
+      ) ${clause}
     `).get(...blockedIds) as { count: number }
     return row.count
   }
@@ -521,15 +531,31 @@ export class LayaService {
   }
 
   private getScopedProgress(): { total: number; processed: number } {
-    const feedIds = this.getScopedFeedIds()
-    if (!feedIds.length) return { total: 0, processed: 0 }
+    const folders = this.getEnabledFolders()
+    if (!folders.length) return { total: 0, processed: 0 }
     const total = this.db.prepare(`
-      SELECT COUNT(*) AS count FROM articles WHERE feed_id IN (${feedIds.map(() => '?').join(',')})
-    `).get(...feedIds) as { count: number }
-    const processed = this.db.prepare(`
       SELECT COUNT(*) AS count FROM articles
-      WHERE feed_id IN (${feedIds.map(() => '?').join(',')}) AND laya_folder_id IS NOT NULL
-    `).get(...feedIds) as { count: number }
+      JOIN laya_folders folders ON folders.is_enabled = 1
+      WHERE (
+        EXISTS (SELECT 1 FROM feeds scoped_feeds
+          JOIN laya_folder_group_scopes scopes ON scopes.group_id = scoped_feeds.group_id
+          WHERE scopes.folder_id = folders.id AND scoped_feeds.id = articles.feed_id AND scopes.enabled = 1)
+        OR EXISTS (SELECT 1 FROM laya_folder_feed_scopes scopes
+          WHERE scopes.folder_id = folders.id AND scopes.feed_id = articles.feed_id AND scopes.enabled = 1)
+      )
+    `).get() as { count: number }
+    const processed = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM article_laya_memberships memberships
+      JOIN articles ON articles.id = memberships.article_id
+      JOIN laya_folders folders ON folders.id = memberships.folder_id AND folders.is_enabled = 1
+      WHERE (
+        EXISTS (SELECT 1 FROM feeds scoped_feeds
+          JOIN laya_folder_group_scopes scopes ON scopes.group_id = scoped_feeds.group_id
+          WHERE scopes.folder_id = folders.id AND scoped_feeds.id = articles.feed_id AND scopes.enabled = 1)
+        OR EXISTS (SELECT 1 FROM laya_folder_feed_scopes scopes
+          WHERE scopes.folder_id = folders.id AND scopes.feed_id = articles.feed_id AND scopes.enabled = 1)
+      )
+    `).get() as { count: number }
     return { total: total.count, processed: processed.count }
   }
 
@@ -557,7 +583,12 @@ export class LayaService {
     if (!feedIds.length) return { total: 0, processed: 0 }
     const placeholders = feedIds.map(() => '?').join(',')
     const total = this.db.prepare(`SELECT COUNT(*) AS count FROM articles WHERE feed_id IN (${placeholders})`).get(...feedIds) as { count: number }
-    const processed = this.db.prepare(`SELECT COUNT(*) AS count FROM articles WHERE feed_id IN (${placeholders}) AND laya_folder_id IS NOT NULL`).get(...feedIds) as { count: number }
+    const processed = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM article_laya_memberships
+      WHERE folder_id = ? AND article_id IN (
+        SELECT id FROM articles WHERE feed_id IN (${placeholders})
+      )
+    `).get(folderId, ...feedIds) as { count: number }
     return { total: total.count, processed: processed.count }
   }
 
@@ -698,10 +729,14 @@ export class LayaService {
     const batch = this.db.prepare(`
       SELECT id, feed_id, title, excerpt, content_text
       FROM articles
-      WHERE laya_folder_id IS NULL
-        AND EXISTS (
-          SELECT 1 FROM laya_folders folders
-          WHERE folders.is_enabled = 1 AND (
+      WHERE EXISTS (
+        SELECT 1 FROM laya_folders folders
+        WHERE folders.is_enabled = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM article_laya_memberships memberships
+            WHERE memberships.article_id = articles.id AND memberships.folder_id = folders.id
+          )
+          AND (
             EXISTS (
               SELECT 1 FROM feeds scoped_feeds
               JOIN laya_folder_group_scopes scopes ON scopes.group_id = scoped_feeds.group_id
@@ -711,7 +746,7 @@ export class LayaService {
               WHERE scopes.folder_id = folders.id AND scopes.feed_id = articles.feed_id AND scopes.enabled = 1
             )
           )
-        ) ${clause}
+      ) ${clause}
       ORDER BY published_at DESC, id DESC
       LIMIT ${BATCH_SIZE}
     `).all(...blockedIds) as ArticleRow[]
@@ -779,12 +814,14 @@ export class LayaService {
 
         try {
           const eligibleFolders = this.getEligibleFoldersForFeed(article.feed_id, folders)
-          const vectorCandidates = !eligibleFolders.length
-            ? []
-            : USE_VECTOR_FILTER
-              ? await prefilterFoldersByVector(article, eligibleFolders, signal)
-              : eligibleFolders
-          prepared.push({ article, folders: vectorCandidates })
+            .filter(folder => !this.hasMembership(article.id, folder.id))
+          // A vector prefilter is allowed to improve local worker warm-up, but
+          // it must never remove a folder: every scoped pair needs an explicit
+          // include/exclude/uncertain decision.
+          if (USE_VECTOR_FILTER && eligibleFolders.length) {
+            await prefilterFoldersByVector(article, eligibleFolders, signal)
+          }
+          prepared.push({ article, folders: eligibleFolders })
         } catch (err) {
           if ((err as Error).name === 'AbortError') throw err
           console.warn(`[LayaService] Failed to prefilter article ${article.id}:`, (err as Error).message)
@@ -800,7 +837,6 @@ export class LayaService {
     const groups = new Map<string, PreparedArticle[]>()
     for (const item of prepared) {
       if (!item.folders.length) {
-        this.persistClassification(item.article.id, null)
         continue
       }
       const key = item.folders.map(folder => folder.id).sort((a, b) => a - b).join(',')
@@ -832,8 +868,9 @@ export class LayaService {
         if (!job) return
         try {
           const decisions = await classifyArticlesBatch(job.chunk.map(item => item.article), job.candidates, signal)
+          const runId = randomUUID()
           for (let index = 0; index < job.chunk.length; index++) {
-            this.persistClassification(job.chunk[index].article.id, decisions[index])
+            this.persistClassifications(job.chunk[index].article.id, decisions[index], runId)
           }
         } catch (err) {
           if ((err as Error).name === 'AbortError') throw err
@@ -849,18 +886,32 @@ export class LayaService {
     await Promise.all(Array.from({ length: Math.min(LAYA_REQUEST_CONCURRENCY, jobs.length) }, () => runLayaWorker()))
   }
 
-  private persistClassification(articleId: number, folder: LayaFolder | null): void {
-    // A folder can be paused while its in-flight batch is being evaluated.
-    // Do not assign that result: leaving the article pending lets an active
-    // folder consider it on the next pass, and makes the pause immediate from
-    // the user's perspective without cancelling other folders' batches.
-    if (folder && !this.isFolderEnabled(folder.id)) {
-      this.scheduleStatusBroadcast()
-      return
-    }
-    this.db.prepare('UPDATE articles SET laya_folder_id = ? WHERE id = ?').run(folder?.id ?? -1, articleId)
-    // Persist every decision immediately, but coalesce renderer notifications.
+  private persistClassifications(articleId: number, decisions: MembershipDecision[], runId: string): void {
+    const save = this.db.transaction(() => {
+      const upsert = this.db.prepare(`
+        INSERT INTO article_laya_memberships
+          (article_id, folder_id, score, decision, model_version, classified_at, run_id, evidence)
+        VALUES (?, ?, ?, ?, 'laya-multilingual', strftime('%s','now'), ?, ?)
+        ON CONFLICT(article_id, folder_id) DO UPDATE SET
+          score = excluded.score, decision = excluded.decision,
+          model_version = excluded.model_version, classified_at = excluded.classified_at,
+          run_id = excluded.run_id, evidence = excluded.evidence
+      `)
+      for (const result of decisions) {
+        // A paused folder remains pending while unrelated folders still save.
+        if (this.isFolderEnabled(result.folder.id)) {
+          upsert.run(articleId, result.folder.id, result.score, result.decision, runId, result.evidence)
+        }
+      }
+    })
+    save()
     this.scheduleStatusBroadcast()
+  }
+
+  private hasMembership(articleId: number, folderId: number): boolean {
+    return this.db.prepare(
+      'SELECT 1 FROM article_laya_memberships WHERE article_id = ? AND folder_id = ?'
+    ).get(articleId, folderId) !== undefined
   }
 
   private getBlockedIds(): number[] {

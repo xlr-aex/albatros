@@ -13,7 +13,7 @@
 
 
 import { session } from 'electron'
-import { URL } from 'url'
+import { assertSafeExternalHttpUrl } from '../security/ExternalUrlPolicy'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,37 +41,6 @@ export class FeedHttpError extends Error {
   }
 }
 
-// ─── SSRF protection ─────────────────────────────────────────────────────────
-
-/** IP prefixes that should never be fetched (RFC 1918 + loopback + link-local). */
-const BLOCKED_PREFIXES = [
-  '10.',
-  '172.16.', '172.17.', '172.18.', '172.19.',
-  '172.20.', '172.21.', '172.22.', '172.23.',
-  '172.24.', '172.25.', '172.26.', '172.27.',
-  '172.28.', '172.29.', '172.30.', '172.31.',
-  '192.168.',
-  '127.',
-  '169.254.',  // Link-local
-  '::1',       // IPv6 loopback
-  'fc', 'fd',  // IPv6 unique-local
-]
-
-/**
- * Returns true if the hostname resolves to a private network address.
- * This is a lightweight prefix check — it won't catch all cases but prevents
- * the most common SSRF vectors.
- */
-function isPrivateHost(hostname: string): boolean {
-  // Reject bare IP addresses that match private ranges
-  for (const prefix of BLOCKED_PREFIXES) {
-    if (hostname.startsWith(prefix)) return true
-  }
-  // localhost is always blocked
-  if (hostname === 'localhost') return true
-  return false
-}
-
 // ─── Client ──────────────────────────────────────────────────────────────────
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Albatros/1.0'
@@ -93,24 +62,11 @@ export async function fetchFeed(
   lastEtag: string | null = null,
   lastModified: string | null = null,
 ): Promise<FetchFeedResult> {
-  // ── SSRF guard ──────────────────────────────────────────────────────────
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    throw new Error(`Invalid feed URL: ${url}`)
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`Unsupported protocol: ${parsed.protocol}`)
-  }
-
-  if (isPrivateHost(parsed.hostname)) {
-    throw new Error(`Blocked: URL resolves to a private address (${parsed.hostname})`)
-  }
+  const parsed = await assertSafeExternalHttpUrl(url)
 
   // ── Build request headers ───────────────────────────────────────────────
-  const isReddit = parsed.hostname.toLowerCase().endsWith('reddit.com')
+  const hostname = parsed.hostname.toLowerCase()
+  const useBrowserSession = hostname.endsWith('reddit.com') || hostname === 'youtube.com' || hostname.endsWith('.youtube.com')
   const headers: Record<string, string> = {
     'User-Agent': USER_AGENT,
     'Accept': 'application/rss+xml, application/atom+xml, application/json, application/xml, text/xml, */*;q=0.8',
@@ -124,19 +80,16 @@ export async function fetchFeed(
 
   let response: Response
   try {
-    // eslint-disable-next-line no-undef
-    const options: RequestInit = {
-      method:  'GET',
+    const options = {
+      method:  'GET' as const,
       headers,
       signal:  controller.signal,
-      redirect: 'follow',
+      redirect: 'manual' as const,
     }
     // Reddit heavily throttles anonymous Node requests. Reuse the persistent
     // Chromium session used by the embedded browser (cookies + browser network
     // stack), which is both faster and accepted by Reddit's RSS endpoint.
-    response = isReddit && session?.fromPartition
-      ? await session.fromPartition('persist:adblock').fetch(url, options)
-      : await fetch(url, options)
+    response = await fetchWithSafeRedirects(parsed, options, useBrowserSession)
   } catch (err) {
     clearTimeout(timeout)
     throw new Error(`Fetch failed for ${url}: ${err instanceof Error ? err.message : String(err)}`)
@@ -186,6 +139,26 @@ export async function fetchFeed(
     lastModified: extractHeader(response.headers.get('last-modified')),
     contentType: extractHeader(response.headers.get('content-type')),
   }
+}
+
+async function fetchWithSafeRedirects(
+  initialUrl: URL,
+  options: { method: string; headers: Record<string, string>; signal: AbortSignal; redirect: 'manual' },
+  useBrowserSession: boolean,
+): Promise<Response> {
+  let currentUrl = initialUrl
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    const response = useBrowserSession && session?.fromPartition
+      ? await session.fromPartition('persist:adblock').fetch(currentUrl.href, options)
+      : await fetch(currentUrl.href, options)
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response
+
+    const location = response.headers.get('location')
+    if (!location) throw new Error(`Redirect without a location from ${currentUrl.hostname}`)
+    if (redirects === 5) throw new Error('Feed redirect limit exceeded')
+    currentUrl = await assertSafeExternalHttpUrl(new URL(location, currentUrl).href)
+  }
+  throw new Error('Feed redirect limit exceeded')
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

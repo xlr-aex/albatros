@@ -11,6 +11,7 @@ import { useArticleStore } from '../../store/articleStore'
 import styles from './ArticleReader.module.css'
 import { formatDate, unescapeHtml } from '../../utils/format'
 import { HighlightText } from './HighlightText'
+import { extractSearchHighlightTerms } from '../../utils/searchHighlight'
 import { normalizeArticleHtml } from '../../utils/articleHtml'
 
 const cleanUserAgent = typeof window !== 'undefined'
@@ -214,7 +215,7 @@ const RedditVideoNode = React.memo(({
       <button
         type="button"
         className="reddit-video-fallback"
-        onClick={() => postUrl && window.open(postUrl, '_blank')}
+        onClick={() => postUrl && void window.api.browser.open(postUrl)}
         style={poster ? { backgroundImage: `url(${JSON.stringify(poster).slice(1, -1)})` } : undefined}
         aria-label="Open Reddit video in browser"
       >
@@ -503,7 +504,7 @@ export function ArticleReader() {
   }, [])
 
   function openInBrowser(url: string) {
-    window.open(url, '_blank')
+    void window.api.browser.open(url)
     setLinkPopup(null)
   }
 
@@ -553,11 +554,9 @@ export function ArticleReader() {
   const highlightedHtml = React.useMemo(() => {
     if (!safeHtml || !currentSearchQuery) return safeHtml
     
-    const q = currentSearchQuery.trim()
-    if (!q) return safeHtml
-    
-    const words = q.split(/\s+/).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    const allMatches = [q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), ...words].sort((a, b) => b.length - a.length)
+    const terms = extractSearchHighlightTerms(currentSearchQuery)
+    if (!terms.length) return safeHtml
+    const allMatches = terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     const regex = new RegExp(`(${allMatches.join('|')})`, 'gi')
     // Non-global copy for .test() — a /g regex advances lastIndex on each
     // successful test, which would skip every other matching node.
@@ -906,9 +905,9 @@ export function ArticleReader() {
                     
                     const a = img.closest('a')
                     if (a) {
-                      mediaHtml += `<a href="${a.href}"><img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /></a><br/>`
+                      mediaHtml += `<a href="${a.href}"><img src="${img.src}" style="max-width: 100%; border-radius: 4px; margin-bottom: 16px;" /></a><br/>`
                     } else {
-                      mediaHtml += `<img src="${img.src}" style="max-width: 100%; border-radius: 8px; margin-bottom: 16px;" /><br/>`
+                      mediaHtml += `<img src="${img.src}" style="max-width: 100%; border-radius: 4px; margin-bottom: 16px;" /><br/>`
                     }
                   })
                 }
@@ -976,7 +975,7 @@ export function ArticleReader() {
               </h3>
 
               {!isLoadingComments && liveComments.length > 0 && (
-                <div style={{ background: 'var(--bg-elevated)', borderRadius: '8px', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', padding: '0.5rem 1.5rem 1.5rem', border: '1px solid var(--border-subtle)' }}>
                   {liveComments.map(comment => (
                     <CommentNode key={comment.id} comment={comment} />
                   ))}

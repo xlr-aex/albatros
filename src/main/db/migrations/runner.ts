@@ -147,6 +147,41 @@ const MIGRATIONS: Migration[] = [
       GROUP BY folders.id, groups.id;
     `,
   },
+  {
+    version: 11,
+    name: 'add_laya_article_memberships',
+    sql: `
+      -- An article may belong to several Laya folders. Keep the legacy
+      -- articles.laya_folder_id column during the transition, but do not use
+      -- it for new reads or classifications.
+      CREATE TABLE IF NOT EXISTS article_laya_memberships (
+        article_id    INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        folder_id     INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        score         REAL,
+        decision      TEXT NOT NULL CHECK (decision IN ('include', 'exclude', 'uncertain')),
+        model_version TEXT,
+        classified_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        run_id        TEXT,
+        evidence      TEXT,
+        PRIMARY KEY (article_id, folder_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_memberships_folder_decision_article
+        ON article_laya_memberships (folder_id, decision, article_id);
+      CREATE INDEX IF NOT EXISTS idx_laya_memberships_article
+        ON article_laya_memberships (article_id);
+
+      -- Preserve existing positive decisions. The old -1 sentinel meant only
+      -- "not assigned to any single winner" and contains no per-folder answer,
+      -- so it is intentionally re-evaluated instead of being guessed here.
+      INSERT OR IGNORE INTO article_laya_memberships
+        (article_id, folder_id, score, decision, model_version, evidence)
+      SELECT articles.id, articles.laya_folder_id, NULL, 'include', 'legacy-single-folder',
+             'Migrated from the legacy single-folder assignment.'
+      FROM articles
+      JOIN laya_folders ON laya_folders.id = articles.laya_folder_id
+      WHERE articles.laya_folder_id > 0;
+    `,
+  },
 ]
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

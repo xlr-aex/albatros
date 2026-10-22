@@ -1,6 +1,6 @@
 # Laya folders
 
-Laya folders organise downloaded posts with a local classifier. They are independent from feed groups: feed groups organise the sidebar, while Laya folders assign posts by subject.
+Laya folders organise downloaded posts with a local classifier. They are independent from feed groups: feed groups organise the sidebar, while Laya folders are subject-based collections. Each selected folder evaluates a post independently, so one post can appear in multiple folders.
 
 ## Create a folder
 
@@ -18,9 +18,9 @@ Changes only take effect after **Enregistrer le périmètre**. A folder with no 
 
 ## Read progress and control sorting
 
-The progress card at the top shows all enabled Laya scopes. Each folder card has a separate bar for its own selected sources. `processed / total` includes posts that matched a folder and posts for which Laya stored no match, so it represents sorting work completed rather than only posts assigned to that card.
+The progress card at the top shows all enabled Laya evaluations. Each folder card has a separate bar for its own selected sources. `processed / total` includes include, exclude and uncertain decisions, so it represents completed classification work rather than only posts assigned to that card.
 
-Use **Mettre en pause** to stop background work without losing decisions. **Ré-analyser** requeues the selected folder’s sources; use it after changing its rule or source scope. Deleting a folder removes its assignment from affected posts, allowing them to be classified again.
+Use **Mettre en pause** to stop background work without losing decisions. **Ré-analyser** clears and re-evaluates only the selected folder’s decisions for its sources; use it after changing its rule or source scope. Deleting a folder deletes only its memberships, not the underlying posts or decisions in other folders.
 
 ## Local runtime
 

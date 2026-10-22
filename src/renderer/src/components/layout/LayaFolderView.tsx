@@ -209,13 +209,13 @@ export function LayaFolderView() {
         <div>
           <p className={styles.eyebrow}>Local sorting</p>
           <h1>Laya folders</h1>
-          <p className={styles.lede}>New posts are sorted locally in parallel, then saved to their folder.</p>
+          <p className={styles.lede}>Each folder evaluates new posts locally and independently.</p>
         </div>
         <div className={styles.status} aria-live="polite">
           <strong>{status ? statusLabel : 'Loading…'}</strong>
-          <span>{status ? `${processed} / ${scopeTotal} posts processed (${percent} %)` : 'Reading status…'}</span>
-          {status && <progress className={styles.progress} value={processed} max={Math.max(scopeTotal, 1)} aria-label={`${percent} % of posts in scope processed`} />}
-          {status && <small>{status.pending > 0 ? `${status.pending} post${status.pending === 1 ? '' : 's'} remaining · results saved as they are processed` : 'All posts in scope are saved'}</small>}
+          <span>{status ? `${processed} / ${scopeTotal} folder evaluations processed (${percent} %)` : 'Reading status…'}</span>
+          {status && <progress className={styles.progress} value={processed} max={Math.max(scopeTotal, 1)} aria-label={`${percent} % of folder evaluations processed`} />}
+          {status && <small>{status.pending > 0 ? `${status.pending} evaluation${status.pending === 1 ? '' : 's'} remaining · results saved as they are processed` : 'All scoped evaluations are saved'}</small>}
         </div>
       </header>
 

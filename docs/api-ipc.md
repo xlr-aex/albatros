@@ -109,16 +109,16 @@ The summary worker processes recent (14 days) or unread articles one at a time, 
 
 | Method | Arguments | Result | Notes |
 |---|---|---|---|
-| `listFolders()` | — | `Promise<LayaFolder[]>` | Folders with their assigned-post count and enabled state. |
+| `listFolders()` | — | `Promise<LayaFolder[]>` | Folders with their included-post count and enabled state. |
 | `createFolder(name, description)` | strings | `Promise<LayaFolder>` | Creates a local classification rule. |
 | `updateFolder(id, patch)` / `deleteFolder(id)` | id and patch / id | `Promise<void>` | Edits state or deletes the rule. |
 | `listGroupScopes(id)` / `setGroupScopes(id, ids)` | folder id, optional group ids | `Promise<LayaGroupScope[]>` / `Promise<void>` | A selected group includes all of its feeds. |
 | `listFeedScopes(id)` / `setFeedScopes(id, ids)` | folder id, optional feed ids | `Promise<LayaFeedScope[]>` / `Promise<void>` | Individual feeds supplement selected groups. |
 | `getStatus()` / `onStatus(callback)` | — / callback | status / unsubscribe | Overall and per-folder progress, worker state and errors. |
 | `trigger()` / `pause()` / `resume()` | — | `Promise<void>` | Controls background classification. |
-| `resetFolderScope(id)` | folder id | `Promise<void>` | Requeues posts from that folder’s selected sources. |
+| `resetFolderScope(id)` | folder id | `Promise<void>` | Clears and requeues only that folder’s decisions for its selected sources. |
 
-The status payload contains `processed`, `scopeTotal` and a `folderProgress` map keyed by folder id. An article is counted as processed once Laya stores either a matching folder or a no-match decision.
+The status payload contains `processed`, `scopeTotal` and a `folderProgress` map keyed by folder id. The global values count article-folder evaluations; a decision can be `include`, `exclude` or `uncertain`.
 
 ## `window.api.debug`
 

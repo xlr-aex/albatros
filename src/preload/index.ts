@@ -38,7 +38,6 @@ const api = {
   // ── Articles ─────────────────────────────────────────────────────────────
   articles: {
     list:          (params: ArticleListParams)                => ipcRenderer.invoke('articles:list', params),
-    getForDigest:  (params: Record<string, unknown>)          => ipcRenderer.invoke('articles:getForDigest', params),
     get:           (id: number)                               => ipcRenderer.invoke('articles:get', id),
     totalUnread: ()                                         => ipcRenderer.invoke('articles:total-unread'),
     mark:        (id: number, action: 'read' | 'starred' | 'saved', value: boolean) => ipcRenderer.invoke('articles:mark', id, action, value),
@@ -82,28 +81,10 @@ const api = {
     setMany: (values: Partial<Record<SettingKey, string>>)  => ipcRenderer.invoke('settings:set-many', values),
   },
 
-  // ── Local LLM (main process is the network/config source of truth) ─────
-  llm: {
-    getConfig: ()                                           => ipcRenderer.invoke('llm:get-config'),
-    listModels: ()                                          => ipcRenderer.invoke('llm:list-models'),
-    testConnection: ()                                      => ipcRenderer.invoke('llm:test-connection'),
-  },
-
   // ── OPML ─────────────────────────────────────────────────────────────────
   opml: {
     import: ()                                              => ipcRenderer.invoke('opml:import'),
     export: ()                                              => ipcRenderer.invoke('opml:export'),
-  },
-
-  // ── Summary ──────────────────────────────────────────────────────────────
-  summary: {
-    getStatus: () => ipcRenderer.invoke('summary:status-get'),
-    trigger: () => ipcRenderer.invoke('summary:trigger'),
-    onStatus: (cb: (payload: { pending: number; total: number; isProcessing: boolean }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => cb(payload as Parameters<typeof cb>[0])
-      ipcRenderer.on('summary:status', handler)
-      return () => ipcRenderer.off('summary:status', handler)
-    }
   },
 
   // ── Laya Folder Sorting ──────────────────────────────────────────────────
@@ -141,6 +122,18 @@ const api = {
 
   menu: {
     toggle: () => ipcRenderer.invoke('menu:toggle') as Promise<boolean>
+  },
+
+  browser: {
+    open: (url: string) => ipcRenderer.invoke('browser:open', url) as Promise<boolean>
+  },
+
+  mcp: {
+    connectionInfo: () => ipcRenderer.invoke('mcp:connection-info') as Promise<{
+      running: boolean
+      url: string
+      token: string
+    } | null>
   }
 }
 

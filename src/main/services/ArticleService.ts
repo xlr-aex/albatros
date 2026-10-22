@@ -67,7 +67,7 @@ export interface ArticleListParams {
   unread_only?: boolean // If true, only return unread articles
   saved_only?: boolean // If true, only return saved articles
   today_only?: boolean // If true, only return articles from the last 24h
-  laya_folder_id?: number // Filter to articles classified into a specific Laya folder
+  laya_folder_id?: number // Filter to articles included in a specific Laya folder
   /** Cursor: last seen published_at value (for pagination) */
   cursor_published_at?: number
   /** Cursor: last seen article id (tie-breaker) */
@@ -151,7 +151,12 @@ export class ArticleService {
       bindings.push(oneDayAgo)
     }
     if (params.laya_folder_id !== undefined) {
-      conditions.push('a.laya_folder_id = ?')
+      conditions.push(`EXISTS (
+        SELECT 1 FROM article_laya_memberships memberships
+        WHERE memberships.article_id = a.id
+          AND memberships.folder_id = ?
+          AND memberships.decision = 'include'
+      )`)
       bindings.push(params.laya_folder_id)
     }
 
@@ -185,119 +190,6 @@ export class ArticleService {
       is_read: row.is_read === 1,
       is_saved: row.is_saved === 1,
     })) as ArticleSummary[]
-  }
-
-  getForDigest(params: ArticleListParams & { limit?: number; search_query?: string; timeframe?: string }): { id: number; url: string; title: string; content: string }[] {
-    let limit = params.limit ?? 300
-    let conditions: string[] = []
-    let bindings: (string | number)[] = []
-    let fromClause = 'FROM articles a JOIN feeds f ON f.id = a.feed_id'
-    
-    let selectContent = "COALESCE(a.summary, SUBSTR(COALESCE(a.content_text, a.excerpt, ''), 1, 800)) AS content"
-
-    // Build base filter conditions (timeframe, feed, group) first
-    if (params.feed_id !== undefined) {
-      conditions.push('a.feed_id = ?')
-      bindings.push(params.feed_id)
-    }
-    if (params.group_id !== undefined) {
-      conditions.push('f.group_id = ?')
-      bindings.push(params.group_id)
-    }
-    if (params.today_only || params.timeframe === 'today') {
-      const offset = 86400
-      conditions.push('a.published_at >= ?')
-      bindings.push(Math.floor(Date.now() / 1000) - offset)
-    } else if (params.timeframe === 'week') {
-      const offset = 86400 * 7
-      conditions.push('a.published_at >= ?')
-      bindings.push(Math.floor(Date.now() / 1000) - offset)
-    } else if (params.timeframe === 'month') {
-      const offset = 86400 * 30
-      conditions.push('a.published_at >= ?')
-      bindings.push(Math.floor(Date.now() / 1000) - offset)
-    }
-
-    if (params.search_query) {
-      const stopWords = new Set([
-        'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'et', 'ou', 'est', 'sont', 'a', 'à', 'en', 'pour', 
-        'qui', 'que', 'quoi', 'dont', 'où', 'dans', 'sur', 'sous', 'vers', 'avec', 'sans', 'fais', 'fait', 'moi', 
-        'peux', 'tu', 'je', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles', 'pas', 'ne', 'plus', 'moins', 
-        'très', 'trop', 'quel', 'quelle', 'quels', 'quelles', 'comment', 'pourquoi', 'quand', 'combien', 'ce', 
-        'cet', 'cette', 'ces', 'mon', 'ton', 'son', 'ma', 'ta', 'sa', 'mes', 'tes', 'ses', 'notre', 'votre', 
-        'leur', 'nos', 'vos', 'leurs', 'tout', 'tous', 'résumé', 'resumé', 'résume', 'resume', 'donne', 'parle', 
-        'dis', 'actu', 'actualité', 'actualités', 'news', 'nouveau', 'nouveaux', 'nouvelles', 'article', 'articles',
-        'qu', 'se', 'me', 'te', 'aux', 'par', 'mais', 'donc', 'car', 'ni', 'si', 'y', 'bien', 'aussi', 'comme', 
-        'alors', 'puis', 'encore', 'ici', 'lors', 'même', 'peu', 'surtout', 'toute', 'toutes', 'faire', 'dois', 
-        'doit', 'devrait', 'peut', 'peuvent', 'veux', 'veut', 'veulent', 'va', 'vont', 'ai', 'as', 'avons', 
-        'avez', 'ont', 'suis', 'es', 'est', 'sommes', 'êtes', 'été', 'étiez', 'étaient', 'étais', 'était'
-      ])
-
-      const words = params.search_query.trim()
-        .toLowerCase()
-        .replace(/[^\w\s\u00C0-\u017F]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length > 1 && !stopWords.has(w))
-
-      if (words.length > 0) {
-        fromClause += ' JOIN articles_fts fts ON fts.docid = a.id'
-        
-        // Strategy: Try AND first, fall back to OR if few results found.
-        // Bare prefix terms (FTS4 ignores a trailing * after a quoted term)
-        const ftsQueryAnd = words.map(w => `${w}*`).join(' AND ')
-        
-        const tempConditions = [...conditions, 'articles_fts MATCH ?']
-        const tempBindings = [...bindings, ftsQueryAnd]
-        const tempWhere = tempConditions.length > 0 ? `WHERE ${tempConditions.join(' AND ')}` : ''
-        const sqlAnd = `
-          SELECT a.id
-          ${fromClause}
-          ${tempWhere}
-          LIMIT 10
-        `
-        
-        let hasEnoughAndResults = false
-        try {
-          const andRows = this.db.prepare(sqlAnd).all(...tempBindings)
-          if (andRows.length >= 10) {
-            hasEnoughAndResults = true
-          }
-        } catch (err) {
-          console.error('[RAG] AND query pre-check failed:', err)
-        }
-
-        const ftsQuery = hasEnoughAndResults 
-          ? ftsQueryAnd 
-          : words.map(w => `${w}*`).join(' OR ')
-
-        conditions.push('articles_fts MATCH ?')
-        bindings.push(ftsQuery)
-        
-        selectContent = "snippet(articles_fts, '[[', ']]', '...', -1, 100) AS content"
-      }
-    }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-
-    const sql = `
-      SELECT a.id, a.url, a.title, ${selectContent}
-      ${fromClause}
-      ${where}
-      ORDER BY a.published_at DESC
-      LIMIT ?
-    `
-    bindings.push(limit)
-
-    const rows = this.db.prepare(sql).all(...bindings) as Record<string, unknown>[]
-    
-    return rows.map(row => ({
-      id: Number(row.id || 0),
-      url: String(row.url || '#'),
-      title: String(row.title || 'Unknown Title'),
-      content: params.search_query && selectContent.includes('snippet') 
-        ? String(row.content || '') 
-        : String(row.content || '').substring(0, 800)
-    }))
   }
 
   getById(id: number): Article | null {
@@ -519,10 +411,6 @@ export class ArticleService {
 
   setStarred(id: number, value: boolean): void {
     this.db.prepare('UPDATE articles SET is_starred = ? WHERE id = ?').run(value ? 1 : 0, id)
-  }
-
-  updateSummary(id: number, summary: string): void {
-    this.db.prepare('UPDATE articles SET summary = ? WHERE id = ?').run(summary, id)
   }
 
   markAllRead(feedId?: number): number {

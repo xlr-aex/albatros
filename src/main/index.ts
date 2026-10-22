@@ -14,6 +14,12 @@
 
 import { app, BrowserWindow, shell, session, ipcMain } from 'electron'
 
+// Laya runs CPU-bound local models alongside Chromium. On affected Windows GPU
+// drivers, the GPU process repeatedly dies while memory is under pressure and
+// takes the renderer down with it. Software compositing is much more reliable
+// for this desktop reader and leaves memory headroom for the classifier.
+app.disableHardwareAcceleration()
+
 // Suppress harmless Chromium DevTools Autofill errors that spam the terminal
 const originalStderrWrite = process.stderr.write.bind(process.stderr);
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,7 +34,8 @@ process.stderr.write = ((chunk: Uint8Array | string, encoding?: any, callback?: 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 import path from 'path'
-import { promises as fs } from 'fs'
+import { promises as fs, existsSync } from 'fs'
+import { spawn } from 'node:child_process'
 import { ElectronBlocker } from '@cliqz/adblocker-electron'
 import { adsAndTrackingLists } from '@cliqz/adblocker'
 import fetch from 'cross-fetch'
@@ -44,7 +51,7 @@ import { SearchService }   from './services/SearchService'
 import { SettingsService } from './services/SettingsService'
 import { OpmlService }     from './services/OpmlService'
 import { LayaService }     from './services/LayaService'
-import { LlmService }      from './services/LlmService'
+import { AlbatrosMcpService } from './mcp/AlbatrosMcpService'
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
 import { SyncEngine, repairStaleFaviconUrls } from './sync/SyncEngine'
@@ -53,8 +60,8 @@ import { Scheduler }  from './sync/Scheduler'
 // ── IPC ───────────────────────────────────────────────────────────────────────
 import { registerFeedHandlers }     from './ipc/feeds'
 import { registerArticleHandlers }  from './ipc/articles'
-import { registerLlmHandlers, registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
-import { registerLayaHandlers } from './ipc/laya'
+import { registerSettingsHandlers, registerSyncHandlers } from './ipc/settings'
+import { registerLayaHandlers }     from './ipc/laya'
 
 // ─── Window helper ────────────────────────────────────────────────────────────
 
@@ -74,13 +81,19 @@ function createWindow(): BrowserWindow {
       nodeIntegration:  false,   // Never allow node in renderer
       sandbox:          false,   // Needed for sql.js WASM in preload
       webviewTag:       true,    // Enable <webview> for embedded browser
-      webSecurity:      false,   // Bypass CORS/CSP for direct local AI api calls
+      webSecurity:      true,
     },
+  })
+
+  // Keep renderer failures visible in the development terminal instead of
+  // leaving the user with an unexplained blank window.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Renderer] Process stopped:', details.reason, details.exitCode)
   })
 
   // Open external links in the OS browser, not Electron
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    openUrlInBrowser(url)
     return { action: 'deny' }
   })
 
@@ -96,10 +109,48 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+/**
+ * Windows can have a broken http(s) association (in this case it pointed to
+ * python.exe). Prefer an installed browser for article links, with Electron's
+ * normal OS hand-off as a fallback on other systems.
+ */
+function openUrlInBrowser(rawUrl: string): boolean {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return false
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) return false
+
+  if (process.platform === 'win32') {
+    const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files'
+    const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
+    const localAppData = process.env.LOCALAPPDATA ?? ''
+    const browsers = [
+      path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    ]
+    const browser = browsers.find(existsSync)
+    if (browser) {
+      const child = spawn(browser, [url.href], { detached: true, stdio: 'ignore', windowsHide: true })
+      child.unref()
+      return true
+    }
+  }
+
+  void shell.openExternal(url.href)
+  return true
+}
+
 // ─── Application lifecycle ────────────────────────────────────────────────────
 
 let scheduler: Scheduler | null = null
-let layaService: LayaService | null = null
+let layaService:    LayaService    | null = null
+let mcpService:     AlbatrosMcpService | null = null
 
 async function bootstrap(): Promise<void> {
   // ── 0. Adblock engine ──────────────────────────────────────────────────
@@ -111,12 +162,14 @@ async function bootstrap(): Promise<void> {
   //    into every page, which violates Reddit's nonce-based CSP and leaves the
   //    embedded webview permanently blank (ghostery/adblocker#4234). Network
   //    filtering (onBeforeRequest) keeps blocking ads/trackers normally.
-  try {
-    // NOTE - v2 cache name: the previous engine file was serialized with
-    // cosmetic filters enabled and would override the config below on load.
-    const enginePath = path.join(app.getPath('userData'), 'adblocker-engine-v2.bin')
-    void fs.unlink(path.join(app.getPath('userData'), 'adblocker-engine.bin')).catch(() => {})
-    const blocker = await ElectronBlocker.fromLists(fetch, adsAndTrackingLists, {
+  // NOTE - v2 cache name: the previous engine file was serialized with
+  // cosmetic filters enabled and would override the config below on load.
+  // Never make first paint wait for filter-list disk I/O or a first-run
+  // download. The dedicated webview partition simply starts unfiltered until
+  // this promise completes.
+  const enginePath = path.join(app.getPath('userData'), 'adblocker-engine-v2.bin')
+  void fs.unlink(path.join(app.getPath('userData'), 'adblocker-engine.bin')).catch(() => {})
+  void ElectronBlocker.fromLists(fetch, adsAndTrackingLists, {
       loadCosmeticFilters: false,
       enableMutationObserver: false,
     }, {
@@ -124,13 +177,12 @@ async function bootstrap(): Promise<void> {
       read: fs.readFile,
       write: fs.writeFile,
     })
-    // Apply to a dedicated partition so the main app session is unaffected
-    blocker.enableBlockingInSession(session.fromPartition('persist:adblock'))
-    console.log('[Adblock] Engine loaded on partition persist:adblock')
-  } catch (err) {
-    console.error('[Adblock] Failed to initialise:', err)
-    // Non-fatal: app works without adblocking
-  }
+    .then(blocker => {
+      // Apply to a dedicated partition so the main app session is unaffected
+      blocker.enableBlockingInSession(session.fromPartition('persist:adblock'))
+      console.log('[Adblock] Engine loaded on partition persist:adblock')
+    })
+    .catch(err => console.error('[Adblock] Failed to initialise:', err))
 
   // ── 0b. Reddit embed fix ────────────────────────────────────────────────
   //    Reddit sends X-Frame-Options: SAMEORIGIN (and matching CSP frame-ancestors)
@@ -226,26 +278,6 @@ async function bootstrap(): Promise<void> {
     console.error('[Embed] Failed to set up Reddit header intercept:', err)
   }
 
-  // ── 0c. Local AI CORS bypass ────────────────────────────────────────────
-  //    Bypass CORS restrictions when fetching local AI endpoints from renderer.
-  try {
-    session.defaultSession.webRequest.onHeadersReceived(
-      { urls: ['http://localhost:*/*', 'http://127.0.0.1:*/*'] },
-      (details, callback) => {
-        const headers: Record<string, string[]> = {}
-        for (const [key, val] of Object.entries(details.responseHeaders ?? {})) {
-          headers[key] = val as string[]
-        }
-        headers['access-control-allow-origin'] = ['*']
-        headers['access-control-allow-headers'] = ['*']
-        callback({ responseHeaders: headers })
-      }
-    )
-    console.log('[AI] Local CORS bypass active')
-  } catch (err) {
-    console.error('[AI] Failed to set up CORS bypass:', err)
-  }
-
   // ── 1. Database ──────────────────────────────────────────────────────────
   const db = await getDatabase()
   runMigrations(db)
@@ -258,13 +290,19 @@ async function bootstrap(): Promise<void> {
   const articleService  = new ArticleService(db)
   const searchService   = new SearchService(db)
   const settingsService = new SettingsService(db)
-  const llmService      = new LlmService(settingsService)
   const opmlService     = new OpmlService(feedService)
+  layaService           = new LayaService(db)
 
   // ── 3. Engine ────────────────────────────────────────────────────────────
   const syncEngine = new SyncEngine(feedService, articleService, db)
   scheduler = new Scheduler(db, syncEngine, feedService, articleService, settingsService)
-  layaService = new LayaService(db)
+  mcpService = new AlbatrosMcpService(db, {
+    articles: articleService,
+    feeds: feedService,
+    search: searchService,
+    laya: layaService,
+    scheduler,
+  })
 
   syncEngine.onSyncComplete = () => {
     layaService?.trigger()
@@ -274,18 +312,10 @@ async function bootstrap(): Promise<void> {
   registerFeedHandlers(feedService, opmlService, scheduler)
   registerArticleHandlers(articleService, searchService, feedService)
   registerSettingsHandlers(settingsService)
-  registerLlmHandlers(llmService)
   registerSyncHandlers(scheduler)
   registerLayaHandlers(layaService)
 
-  ipcMain.handle('summary:status-get', () => {
-    return {
-      pending: 0,
-      total: 0,
-      isProcessing: false
-    }
-  })
-  ipcMain.handle('summary:trigger', () => undefined)
+  ipcMain.handle('mcp:connection-info', () => mcpService?.getConnectionInfo() ?? null)
 
   ipcMain.handle('menu:toggle', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -295,15 +325,29 @@ async function bootstrap(): Promise<void> {
     return visible
   })
 
+  ipcMain.handle('browser:open', (_event, url: string) => openUrlInBrowser(url))
+
   ipcMain.on('debug:log', (_event, msg) => {
     console.log('[Renderer Debug]', msg)
   })
 
-  // Start background summarization
-  layaService.start()
-
   // ── 5. Window ────────────────────────────────────────────────────────────
-  createWindow()
+  // Show the reader before loading the two local ML models. Their first load
+  // uses several gigabytes of RAM and must never leave a blank Electron window.
+  const mainWindow = createWindow()
+
+  // Give Chromium a usable first paint before local Laya competes for RAM/CPU.
+  mainWindow.webContents.once('did-finish-load', () => {
+    setTimeout(() => layaService?.start(), 8_000)
+  })
+
+  // The MCP endpoint remains loopback-only. ChatGPT reaches it through an
+  // authenticated Secure MCP Tunnel, while local clients can use the same URL.
+  try {
+    await mcpService.start()
+  } catch (error) {
+    console.error('[MCP] Local MCP server did not start:', error)
+  }
 
   app.on('activate', () => {
     // macOS: re-create window when clicking the dock icon with no open windows
@@ -326,5 +370,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   scheduler?.stop()
   layaService?.stop()
+  void mcpService?.stop().catch(error => console.error('[MCP] Failed to stop:', error))
   closeDatabase()
 })

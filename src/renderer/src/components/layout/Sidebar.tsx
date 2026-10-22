@@ -504,8 +504,9 @@ export function Sidebar() {
           </div>
           <input
             type="search"
-            placeholder="Search feeds and articles…"
+            placeholder={'Search… (AND, OR, -, "…", dates)'}
             aria-label="Search feeds and articles"
+            title={'Operators: AND, OR, -word, "exact phrase", (group), "word * word", before:YYYY-MM-DD, after:YYYY-MM-DD, YYYY..YYYY'}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="no-drag"

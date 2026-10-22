@@ -381,6 +381,10 @@ export class SyncEngine {
           }
           return this.deferRateLimitedFeed(feed, logId, skipPersist, retryAfterMs)
         }
+        // Retrying cannot make an oversized response smaller. In particular,
+        // avoid downloading a multi-megabyte feed three times in one scheduler
+        // tick, which creates needless memory pressure.
+        if (lastError.message.startsWith('Feed body exceeds size limit')) break
         // Network/HTTP error: retry up to MAX_ATTEMPTS
         if (attempt < MAX_ATTEMPTS) {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
@@ -455,6 +459,11 @@ export class SyncEngine {
   private async tryFeedAlternatives(feedUrl: string): Promise<{ url: string; response: FetchFeedResult } | null> {
     let parsed: URL
     try { parsed = new URL(feedUrl) } catch { return null }
+
+    // A YouTube Atom URL is not a conventional blog endpoint. Falling back to
+    // /feed/ fetches YouTube's HTML home page (HTTP 200), which then becomes a
+    // misleading "0 articles" parsing error and can never recover the feed.
+    if (/(^|\.)youtube\.com$/i.test(parsed.hostname) && parsed.pathname === '/feeds/videos.xml') return null
 
     const paths = new Set<string>()
     const cleanPath = parsed.pathname.replace(/\/+$/, '')
@@ -571,8 +580,12 @@ export class SyncEngine {
   }): void {
     const windows = BrowserWindow?.getAllWindows?.() ?? []
     for (const win of windows) {
-      if (!win.isDestroyed()) {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        try {
         win.webContents.send('sync:update', payload)
+        } catch {
+          // The renderer may disappear while a background sync finishes.
+        }
       }
     }
   }

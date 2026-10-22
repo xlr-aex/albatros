@@ -13,6 +13,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type { FeedService } from '../services/FeedService'
 import type { OpmlService } from '../services/OpmlService'
 import type { Scheduler } from '../sync/Scheduler'
+import { assertSafeExternalHttpUrl } from '../security/ExternalUrlPolicy'
 import fs from 'fs'
 
 export function registerFeedHandlers(
@@ -54,8 +55,7 @@ export function registerFeedHandlers(
     const trimmedUrl = url?.trim()
     if (!trimmedUrl) throw new Error('Feed URL cannot be empty')
 
-    // Validate URL format
-    try { new URL(trimmedUrl) } catch { throw new Error(`Invalid URL: ${trimmedUrl}`) }
+    await assertSafeExternalHttpUrl(trimmedUrl)
 
     const id = feedService.create({ url: trimmedUrl, group_id: groupId })
 
