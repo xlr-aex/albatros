@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.2.0 — 2026-11-22
+## v1.2.1 — 2026-11-22
 
 - Add support for public YouTube channel pages when their RSS feed is unavailable.
 - Allow editing a feed's name and URL; preserve custom names during later syncs.

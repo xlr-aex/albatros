@@ -277,7 +277,7 @@ export function SettingsPanel({ onClose }: Props) {
 
         {/* ── Footer ─────────────────────────────────────────────── */}
         <div className={styles.footer}>
-          <span className={styles.version}>Albatros v1.2.0</span>
+          <span className={styles.version}>Albatros v1.2.1</span>
         </div>
       </div>
     </div>
