@@ -7,7 +7,7 @@ albatros/
 ├─ src/main/
 │  ├─ db/          SQLite connection, schema, triggers and migrations
 │  ├─ ipc/         allow-listed IPC handlers
-│  ├─ services/    feeds, articles, search, settings, OPML and summaries
+│  ├─ services/    feeds, articles, search, settings, OPML and Laya
 │  ├─ sync/        HTTP client, feed parser, scheduler and sync engine
 │  └─ index.ts     Electron bootstrap and session/window configuration
 ├─ src/preload/    typed contextBridge API
@@ -119,7 +119,7 @@ Network rate limiting and Electron session behaviour require an integration or m
 6. Open a Reddit link with **⧉ In App** and confirm the embedded page renders (not black) after the anti-bot challenge.
 7. Confirm cached articles remain visible when a provider is offline/deferred.
 8. Search for a multi-word query and navigate to a result.
-9. If AI is enabled, test provider detection and one streamed digest.
+9. Create a Laya folder, select its source feeds and check classification progress.
 10. Restart the app and confirm database state persists.
 
 ## Generated and local files

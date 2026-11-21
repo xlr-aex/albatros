@@ -27,7 +27,6 @@ All request/response methods return promises because they wrap `ipcRenderer.invo
 | Method | Arguments | Result | Notes |
 |---|---|---|---|
 | `list(params)` | `ArticleListParams` | `Promise<ArticleSummary[]>` | Indexed/cursor-based list query for feed, folder or system views. |
-| `getForDigest(params)` | digest filter object | `Promise<Article[]>` | Retrieves bounded AI context by time/source. |
 | `get(id)` | `number` | `Promise<Article \| null>` | Returns the complete article body and state. |
 | `totalUnread()` | — | `Promise<number>` | Global unread aggregate. |
 | `mark(id, action, value)` | action is `read`, `starred` or `saved` | `Promise<void>` | Updates one user-state flag. `saved` also maintains the `read_later` table. |
@@ -76,17 +75,7 @@ Status payload:
 | `set(key, value)` | typed key, string value | `Promise<void>` |
 | `setMany(values)` | partial key/value record | `Promise<void>` |
 
-Values are stored as text. The known keys cover theme/accent, font and panel dimensions, read behaviour, retention/default interval and AI provider/model/base URL/prompts.
-
-## `window.api.llm`
-
-| Method | Result | Notes |
-|---|---|---|
-| `getConfig()` | `Promise<AiConfig>` | Normalised provider settings (provider, chat URL, model). |
-| `listModels()` | `Promise<string[]>` | Queries the configured local provider for available models. |
-| `testConnection()` | `Promise<TestResult>` | Probes the configured endpoint and reports success/error. |
-
-The main process is the source of truth for AI configuration; the renderer never calls model endpoints directly.
+Values are stored as text. The current settings cover theme/accent, font and panel dimensions, reading behaviour, retention and the default feed interval.
 
 ## `window.api.opml`
 
@@ -94,16 +83,6 @@ The main process is the source of truth for AI configuration; the renderer never
 |---|---|---|
 | `import()` | `Promise<number>` | Opens a native file picker, imports subscriptions and starts refresh. |
 | `export()` | `Promise<boolean>` | Opens a save dialog and writes the current folders/subscriptions. |
-
-## `window.api.summary`
-
-| Method | Result | Notes |
-|---|---|---|
-| `getStatus()` | `Promise<{pending,total,isProcessing}>` | Current background-summary queue state. |
-| `trigger()` | `Promise<void>` | Wakes the summariser if it is idle and running. |
-| `onStatus(callback)` | unsubscribe function | Receives queue progress broadcasts. |
-
-The summary worker processes recent (14 days) or unread articles one at a time, backs off when the local model is offline, and permanently skips an article after three failed attempts so one malformed entry cannot stall the queue.
 
 ## `window.api.laya`
 

@@ -60,7 +60,7 @@ Stores normalised entries and local interaction state. The identity constraint i
 - enclosure URL/type for media;
 - publication/fetch timestamps;
 - `is_read`, `is_starred`, `is_saved`;
-- optional local-AI `summary`.
+- legacy nullable `summary` column, retained for compatibility with existing databases.
 
 Raw HTML is deliberately stored unsanitised. DOMPurify runs in the reader immediately before rendering.
 
@@ -74,7 +74,7 @@ These tables support article labels and saved-article metadata. `read_later.arti
 
 ### `settings`
 
-A text key/value store. Known settings cover theme, accent, font sizes, pane layout, retention, feed interval and local AI provider/model/prompts. Callers perform type conversion.
+A text key/value store. Current settings cover theme, accent, font sizes, pane layout, retention and feed interval. Callers perform type conversion. Older AI settings may remain in upgraded databases but are no longer used.
 
 ### `sync_log`
 
@@ -94,7 +94,7 @@ The schema includes indexes for:
 - global publication cursor `(published_at, id)`;
 - unread global publication order;
 - starred and saved partial indexes;
-- articles waiting for summaries;
+- legacy article-summary lookup (retained for schema compatibility);
 - tags and per-feed sync history.
 
 Article lists sort and paginate on `COALESCE(published_at, created_at)` so entries without a parseable feed date stay reachable: `NULL` timestamps can never satisfy a `<` cursor comparison and would otherwise disappear after page one. Lists should remain cursor-based; avoid large `OFFSET` pagination because it becomes increasingly expensive as the library grows.
@@ -117,7 +117,7 @@ Insert/delete/update triggers increment or decrement `feeds.unread_count`. Daily
 
 Never edit an already-applied migration to change an existing installation. Add a new monotonically increasing entry to `MIGRATIONS` in `src/main/db/migrations/runner.ts`, make it idempotent where practical, and test both a new database and an upgraded copy.
 
-Current migrations add group icons, thumbnails, corrected timestamps, article summaries and query indexes after the initial schema.
+Migrations add group icons, thumbnails, corrected timestamps, legacy article summaries, query indexes, Laya data and custom feed-title tracking after the initial schema.
 
 ## Transactions and retention
 
