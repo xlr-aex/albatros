@@ -47,6 +47,7 @@ Stores the canonical feed URL, publisher metadata, favicon, scheduling/cache hea
 - `last_etag` and `last_modified` enable conditional GET;
 - `last_fetched_at`, `next_fetch_at` and `fetch_interval_sec` drive scheduling;
 - `is_active` pauses or disables a feed.
+- `title_is_custom` preserves a name edited in Feed Properties when publisher metadata is refreshed (migration 12).
 
 `article_count` is not stored. Feed queries compute it with a correlated count while excluding rows tagged internally as `reddit-comment`.
 

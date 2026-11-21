@@ -33,7 +33,7 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-elevated);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
   font-variant-numeric: tabular-nums;
 }

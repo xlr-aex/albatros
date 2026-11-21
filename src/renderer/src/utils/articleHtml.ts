@@ -115,7 +115,7 @@ export function normalizeArticleHtml(
     image.loading = 'lazy'
     image.decoding = 'async'
     image.referrerPolicy = 'no-referrer'
-    image.style.cssText = 'max-width:100%;height:auto;display:block;margin:1em auto;border-radius:8px;'
+    image.style.cssText = 'max-width:100%;height:auto;display:block;margin:1em auto;border-radius:4px;'
     doc.body.insertBefore(image, doc.body.firstChild)
   }
 

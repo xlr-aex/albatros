@@ -1,0 +1,10 @@
+.modal {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.form { gap: var(--space-5); }
+.field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.input:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+.hint { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: 1.4; }
+.website { color: var(--text-secondary); font-size: var(--text-sm); overflow-wrap: anywhere; }

@@ -182,6 +182,11 @@ const MIGRATIONS: Migration[] = [
       WHERE articles.laya_folder_id > 0;
     `,
   },
+  {
+    version: 12,
+    name: 'preserve_custom_feed_titles',
+    sql: `ALTER TABLE feeds ADD COLUMN title_is_custom INTEGER NOT NULL DEFAULT 0;`,
+  },
 ]
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

@@ -66,10 +66,20 @@ export async function fetchFeed(
 
   // ── Build request headers ───────────────────────────────────────────────
   const hostname = parsed.hostname.toLowerCase()
-  const useBrowserSession = hostname.endsWith('reddit.com') || hostname === 'youtube.com' || hostname.endsWith('.youtube.com')
+  const isYouTubeHost = hostname === 'youtube.com' || hostname.endsWith('.youtube.com')
+  const isYouTubeChannelPage = isYouTubeHost && (
+    /^\/@[\w.-]+(?:\/videos)?\/?$/i.test(parsed.pathname) ||
+    /^\/(?:channel|c|user)\/[\w.-]+(?:\/videos)?\/?$/i.test(parsed.pathname)
+  )
+  // Electron's session.fetch cancels manual redirects on YouTube (notably its
+  // consent redirect). Node fetch lets us inspect and validate each hop before
+  // following it, and YouTube serves public channel pages through this path.
+  const useBrowserSession = hostname.endsWith('reddit.com') || (isYouTubeHost && !isYouTubeChannelPage)
   const headers: Record<string, string> = {
     'User-Agent': USER_AGENT,
-    'Accept': 'application/rss+xml, application/atom+xml, application/json, application/xml, text/xml, */*;q=0.8',
+    'Accept': isYouTubeChannelPage
+      ? 'text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8'
+      : 'application/rss+xml, application/atom+xml, application/json, application/xml, text/xml, */*;q=0.8',
   }
   if (lastEtag)     headers['If-None-Match']     = lastEtag
   if (lastModified) headers['If-Modified-Since'] = lastModified

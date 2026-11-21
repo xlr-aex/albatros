@@ -72,7 +72,7 @@ interface FeedStore {
   loadFeeds:    () => Promise<void>
   addFeed:      (url: string, groupId?: number) => Promise<void>
   deleteFeed:   (id: number) => Promise<void>
-  updateFeed:   (id: number, patch: Partial<Pick<Feed, 'title' | 'group_id' | 'fetch_interval_sec' | 'is_active'>>) => Promise<void>
+  updateFeed:   (id: number, patch: Partial<Pick<Feed, 'url' | 'title' | 'group_id' | 'fetch_interval_sec' | 'is_active'>>) => Promise<void>
 
   createGroup:  (name: string) => Promise<void>
   updateGroup:  (id: number, patch: { name?: string; icon?: string | null }) => Promise<void>

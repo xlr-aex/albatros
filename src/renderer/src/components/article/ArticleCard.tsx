@@ -19,18 +19,40 @@ interface Props {
   isCompact?: boolean
 }
 
+function preferredThumbnailUrl(url: string): string {
+  // Science X feeds intentionally publish their tiny `/tmb/` preview in RSS,
+  // while the matching 800px image is available on the same CDN. This covers
+  // TechXplore, Phys.org and Medical Xpress without making an extra request.
+  return url.replace(/\/csz\/news\/tmb\//, '/csz/news/800w/')
+}
+
 export const ArticleCard = memo(function ArticleCard({ article, isSelected, onClick, isCompact }: Props) {
   const { title, excerpt, feed_title, published_at, is_read, thumbnail_url } = article
+  const highQualityThumbnailUrl = thumbnail_url ? preferredThumbnailUrl(thumbnail_url) : null
   const currentSearchQuery = useArticleStore(state => state.currentSearchQuery)
   const selection = useFeedStore(state => state.selection)
   const [thumbError, setThumbError] = useState(false)
+  const [thumbnailSrc, setThumbnailSrc] = useState(highQualityThumbnailUrl)
   const [avatarError, setAvatarError] = useState(false)
 
   // Reset error state if thumbnail_url changes
   useEffect(() => {
     setThumbError(false)
+    setThumbnailSrc(highQualityThumbnailUrl)
     setAvatarError(false)
-  }, [thumbnail_url, article.feed_favicon])
+  }, [highQualityThumbnailUrl, article.feed_favicon])
+
+  useEffect(() => {
+    if (!thumbnail_url?.includes('external-preview.redd.it') || !article.url?.includes('reddit.com')) return
+    let cancelled = false
+    void window.api.articles.getRedditComments(article.url).then((data: { previewUrl?: unknown }) => {
+      if (!cancelled && typeof data.previewUrl === 'string' && data.previewUrl.startsWith('https://')) {
+        setThumbnailSrc(data.previewUrl)
+        setThumbError(false)
+      }
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [article.url, thumbnail_url])
 
   const showFeedFavicon = article.feed_favicon && ['all', 'unread', 'saved', 'today', 'group', 'search', 'feed'].includes(selection.type as string)
 
@@ -76,15 +98,23 @@ export const ArticleCard = memo(function ArticleCard({ article, isSelected, onCl
       </div>
 
       {/* ── Media : large Instagram-style image ──────────────────────────── */}
-      {thumbnail_url && !thumbError && !isCompact && (
+      {thumbnailSrc && !thumbError && !isCompact && (
         <div className={styles.mediaWrapper}>
           <img
-            src={thumbnail_url}
+            src={thumbnailSrc}
             alt=""
             className={styles.media}
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={() => setThumbError(true)}
+            onError={() => {
+              // The 800px source is an enhancement, never a reason to lose
+              // an otherwise valid image when a provider changes its CDN.
+              if (thumbnail_url && thumbnailSrc !== thumbnail_url) {
+                setThumbnailSrc(thumbnail_url)
+              } else {
+                setThumbError(true)
+              }
+            }}
           />
         </div>
       )}

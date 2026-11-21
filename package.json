@@ -1,6 +1,6 @@
 {
   "name": "albatros",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "A fast, offline-first RSS feed reader with SQLite — inspired by Inoreader",
   "license": "MIT",
   "private": true,

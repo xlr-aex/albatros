@@ -10,34 +10,41 @@
 
 :root {
   /* ── Brand colours ──────────────────────────────────────────────────────── */
-  --brand-500: #3b82f6;   /* Primary blue */
-  --brand-400: #60a5fa;
-  --brand-600: #2563eb;
+  /* The accent base is set by the user's preference.  Derived shades stay
+     deliberately brighter in dark mode, and become darker in light mode. */
+  --accent-base: #14b8a6;
+  --brand-400: color-mix(in srgb, var(--accent-base), white 28%);
+  --brand-500: var(--accent-base);
+  --brand-600: color-mix(in srgb, var(--accent-base), black 18%);
+  --brand-on-primary-dark: #061714;
+  --brand-on-primary-light: #061714;
+  --brand-on-primary: var(--brand-on-primary-dark);
 
   /* ── Dark theme surfaces (near-black, borderless design) ────────────────── */
-  --bg-base:      #000000; /* App background — true black for OLED-style depth   */
-  --bg-sidebar:   #050507; /* Sidebar panel                                      */
-  --bg-panel:     #0a0a0d; /* Article list panel                                 */
-  --bg-surface:   #141418; /* Cards, inputs                                      */
-  --bg-elevated:  #1c1c22; /* Hover states, tooltips                             */
+  --bg-base:      #0b1214;
+  --bg-sidebar:   #101b1e;
+  --bg-panel:     #0e181b;
+  --bg-surface:   #16262a;
+  --bg-elevated:  #21363b;
   --bg-overlay:   rgba(0, 0, 0, 0.75); /* Modal overlay                          */
 
   /* ── Text ───────────────────────────────────────────────────────────────── */
-  --text-primary:   #f5f5f7;  /* High contrast on black — WCAG AAA              */
-  --text-secondary: #a1a1aa;
-  --text-muted:     #52525b;
+  --text-primary:   #f1f5f5;
+  --text-secondary: #b4c5c7;
+  --text-muted:     #789194;
   --text-inverse:   #000000;
 
   /* ── Borders ────────────────────────────────────────────────────────────── */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-light:  rgba(255, 255, 255, 0.12);
+  --border-subtle: rgba(153, 246, 228, 0.10);
+  --border-light:  rgba(153, 246, 228, 0.20);
   --border-focus:  var(--brand-500);
   --border-column: rgba(255, 255, 255, 0.05); /* Column dividers — barely there */
 
   /* ── Semantic colours ───────────────────────────────────────────────────── */
   --color-unread:   var(--brand-400);
-  --color-unread-badge-bg:   rgba(96, 165, 250, 0.15);
-  --color-unread-badge-text: #7eb3f8;
+  --color-unread-badge-bg:   var(--brand-500);
+  --color-unread-badge-text: var(--brand-on-primary);
+  --color-unread-badge-border: var(--brand-600);
   --color-saved:    #34d399;   /* Emerald */
   --color-error:    #f87171;   /* Red */
   --color-success:  #4ade80;   /* Green */
@@ -76,12 +83,12 @@
   --sidebar-width:      260px;
   --article-list-width: 420px;
   --toolbar-height:     60px;
-  --resize-handle-w:    4px;
+  --resize-handle-w:    14px;
 
   /* ── Border radius ──────────────────────────────────────────────────────── */
   --radius-sm:   6px;
   --radius-md:   10px;
-  --radius-lg:   16px;
+  --radius-lg:   14px;
   --radius-full: 9999px;
 
   /* ── Shadows ────────────────────────────────────────────────────────────── */
@@ -107,19 +114,24 @@
 
 /* Light theme overrides */
 [data-theme='light'] {
-  --bg-base:      #fafafa;
+  /* Light surfaces need a deeper accent for readable text, borders and CTAs. */
+  --brand-400: color-mix(in srgb, var(--accent-base), black 34%);
+  --brand-500: color-mix(in srgb, var(--accent-base), black 18%);
+  --brand-600: color-mix(in srgb, var(--accent-base), black 32%);
+  --brand-on-primary: var(--brand-on-primary-light);
+  --bg-base:      #f0fdfa;
   --bg-sidebar:   #ffffff;
   --bg-panel:     #ffffff;
-  --bg-surface:   #f4f4f5;
-  --bg-elevated:  #e4e4e7;
+  --bg-surface:   #ffffff;
+  --bg-elevated:  #dff7f3;
   --bg-overlay:   rgba(0, 0, 0, 0.4);
 
-  --text-primary:   #18181b;
-  --text-secondary: #52525b;
-  --text-muted:     #a1a1aa;
+  --text-primary:   #134e4a;
+  --text-secondary: #475569;
+  --text-muted:     #64748b;
 
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-light:  rgba(0, 0, 0, 0.12);
+  --border-subtle: rgba(13, 148, 136, 0.14);
+  --border-light:  rgba(13, 148, 136, 0.25);
 
   --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.1);

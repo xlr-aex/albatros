@@ -6,7 +6,7 @@
   > [!WARNING]
   > Albatros is actively under construction. Features, the data model, and the MCP interface may change between releases. Use release builds with care and keep a backup of your local database.
 
-  RSS · Atom · JSON Feed · Reddit
+  RSS · Atom · JSON Feed · Reddit · YouTube channels
 
   <br />
 
@@ -38,13 +38,14 @@ Albatros keeps subscriptions, downloaded articles and reading state on your comp
 |---|---|
 | Clean three-pane desktop layout | Responsive, high-quality article images |
 | Feed folders and unread counters | Reddit comments and HLS video playback |
+| Editable feed name and URL | YouTube channel video posts |
 | Saved posts and full-text search | Lazy loading with reliable fallbacks |
 | Offline access to downloaded content | Embedded browser with ad blocking |
 | GitHub links, repositories and issue feeds | Inline previews for linked content |
 
 | Sync | Local classification |
 |---|---|
-| RSS, Atom, JSON Feed and Reddit | Local SQLite database |
+| RSS, Atom, JSON Feed, Reddit and YouTube channels | Local SQLite database |
 | Adaptive scheduling and HTTP caching | No telemetry |
 | Rate-limit-aware Reddit queue | No Albatros cloud service |
 | OPML import and export | Laya folders and on-device sorting |
@@ -84,6 +85,8 @@ Negative clauses filter results but are not highlighted. Positive terms and phra
 </div>
 
 Download the file for your platform from the latest release. On Linux, make the AppImage executable before opening it: `chmod +x Albatros-*.AppImage`.
+
+Channel pages such as `https://www.youtube.com/@handle` can be added as feeds. Albatros reads public video listings from the channel page when the RSS endpoint is unavailable. YouTube may show a consent or anti-bot page; in that case, open the channel in the embedded browser and retry. Feed Properties lets you change a feed's name or URL. Changing the URL retains existing articles and triggers a refresh.
 
 ### Development
 
@@ -156,6 +159,8 @@ Available read-only tools cover source-group and feed discovery, post search, re
 | [Documentation overview](DOCUMENTATION.md) | [Development](docs/development.md) | [Troubleshooting](docs/troubleshooting.md) |
 | [UI and accessibility](docs/ui-ux.md) | [Sync engine](docs/sync-engine.md) | [Media and Reddit](docs/media-and-reddit.md) |
 | [Laya folders](docs/laya-folders.md) | [Database](docs/database.md) · [IPC API](docs/api-ipc.md) | |
+
+See the [changelog](CHANGELOG.md) for release highlights.
 
 ## Data and privacy
 

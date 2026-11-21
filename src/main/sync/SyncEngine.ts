@@ -20,6 +20,8 @@ import type { Database } from 'better-sqlite3'
 import pLimit from 'p-limit'
 import { FeedHttpError, fetchFeed, type FetchFeedResult } from './HttpClient'
 import { parseFeed } from './FeedParser'
+import type { ParseResult } from './FeedParser'
+import { fetchYouTubeChannel, isYouTubeChannelUrl } from './YouTubeChannel'
 import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
 import { persistDatabase } from '../db/connection'
@@ -237,14 +239,21 @@ export class SyncEngine {
         await this.waitForProvider(feed.url)
         let effectiveUrl = feed.url
         let response: FetchFeedResult
+        let youtubeParsed: ParseResult | null = null
         try {
-          response = await fetchFeed(
-            effectiveUrl,
-            useCache ? feed.last_etag : null,
-            useCache ? feed.last_modified : null,
-          )
+          if (isYouTubeChannelUrl(effectiveUrl)) {
+            youtubeParsed = await fetchYouTubeChannel(effectiveUrl)
+            response = { status: 200, body: '', etag: null, lastModified: null, contentType: null }
+          } else {
+            response = await fetchFeed(
+              effectiveUrl,
+              useCache ? feed.last_etag : null,
+              useCache ? feed.last_modified : null,
+            )
+          }
         } catch (err) {
           if (!(err instanceof FeedHttpError) || err.status !== 404) throw err
+          if (isYouTubeChannelUrl(feed.url)) throw err
 
           const recovered = await this.tryFeedAlternatives(feed.url)
           if (!recovered) throw err
@@ -276,7 +285,7 @@ export class SyncEngine {
         }
 
         // ── Parse ──────────────────────────────────────────────────────────
-        let parsed = parseFeed(response.body, response.contentType)
+        let parsed = youtubeParsed ?? parseFeed(response.body, response.contentType)
 
         // ── Fallback RSS <-> ATOM for incomplete scraping ──────────────────
         const isContentMissing =
@@ -319,7 +328,7 @@ export class SyncEngine {
         // Update feed metadata from parsed feed info
         const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl, parsed.meta.icon_url)
         if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
-          this.feedService.update(
+          this.feedService.updateFromSync(
             feed.id,
             {
               title: parsed.meta.title ?? undefined,

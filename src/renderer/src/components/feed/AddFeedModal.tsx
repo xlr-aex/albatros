@@ -44,22 +44,23 @@ export function AddFeedModal({ onClose }: Props) {
     >
       <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Add Feed" aria-describedby={error ? 'feed-error' : undefined}>
         <div className={styles.header}>
-          <h2 className={styles.title}>Add RSS Feed</h2>
+          <h2 className={styles.title}>Add Feed</h2>
           <button className={styles.closeBtn} onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         <form className={styles.form} onSubmit={handleSubmit}>
-          <label className={styles.label} htmlFor="feed-url">Feed URL or website address</label>
+          <label className={styles.label} htmlFor="feed-url">Feed URL or YouTube channel</label>
           <input
             id="feed-url"
             ref={inputRef}
             className={styles.input}
             type="url"
-            placeholder="https://example.com/rss"
+            placeholder="https://example.com/rss or youtube.com/@channel"
             value={url}
             onChange={e => setUrl(e.target.value)}
             required
           />
+          <p className={styles.hint}>YouTube channel links are supported even when their RSS feed is unavailable.</p>
 
           {groups.length > 0 && (
             <>
