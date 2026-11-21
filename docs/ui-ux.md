@@ -1,211 +1,67 @@
-# UI/UX Design & Accessibility
+# Interface and accessibility
 
-Albatros adopts an opinionated, consistency-first approach to UI/UX. All visual and interaction decisions are centralized in design tokens, making future updates trivial.
+This guide describes the main interface rules. Use the current CSS and React components as the source for exact values.
 
-## Design System
+## Design tokens
 
-### Tokens (`styles/variables.css`)
+`src/renderer/src/styles/variables.css` defines colors, spacing, text sizes, border radii, transitions, and layer order. Use these tokens in component CSS. Do not add a fixed value when a suitable token exists.
 
-All spacing, color, type scale, animation timing, and z-index layers are defined as CSS custom properties. **Never use hardcoded values in component CSS; always reference a token.**
-
-| Token | Purpose |
+| Token | Use |
 |---|---|
-| `--brand-500` | Primary blue accent |
-| `--bg-base` / `--bg-sidebar` / `--bg-panel` | Panel hierarchy (darkest → lightest) |
-| `--text-primary` / `--text-secondary` / `--text-muted` | Text hierarchy |
-| `--transition` / `--transition-fast` / `--transition-slow` | 150ms / 100ms / 250ms ease-out |
-| `--z-dropdown` / `--z-overlay` / `--z-modal` | Layer ordering: 150 / 100 / 200 |
+| `--brand-500` | Main accent color. |
+| `--bg-base`, `--bg-sidebar`, `--bg-panel` | Main background colors. |
+| `--text-primary`, `--text-secondary`, `--text-muted` | Text colors. |
+| `--transition`, `--transition-fast`, `--transition-slow` | Transition times. |
+| `--z-dropdown`, `--z-overlay`, `--z-modal` | Layer order. |
 
-### Light/Dark Theme
+The app sets `data-theme="light"` for the light theme. Theme rules in `variables.css` set the colors. `utils/theme.ts` applies a selected accent color and sets a readable text color for accent buttons.
 
-Applied via `data-theme="light"` on the root app container. Token overrides in `variables.css` handle everything automatically — no component-level conditionals needed.
+## Navigation
 
----
+The sidebar has views for all posts, unread posts, saved posts, and today's posts. It also shows feed groups, feeds, and Laya folders.
 
-## Component Patterns
+For a feed group, select the arrow to expand or collapse it. Select the name or icon to show posts from its feeds. The selected group uses `aria-current="true"`.
 
-### System Navigation
-| View | Icon | Intuition |
-|---|---|---|
-| **All Items** | Layout Grid | Overall database view |
-| **Unread** | Inbox | Incoming, pending items |
-| **Saved Posts** | Bookmark | Long-term storage/reference |
-| **Today** | Calendar | Time-bound context |
+The search field has an accessible label. A clear button appears when the query contains text. Keep search controls usable with a keyboard.
 
-### Navigation Items (Sidebar)
+Context menus use `role="menu"`. Each action uses `role="menuitem"`. Keep the menu labels and keyboard focus visible.
 
-Nav items are **pill-shaped**, not full-bleed rows:
-- `width: calc(100% - var(--space-4))` with `margin: 1px var(--space-2)`
-- `border-radius: var(--radius-md)`
-- Active state has a **left accent bar**: `box-shadow: inset 3px 0 0 var(--brand-500)`
+## Article list and reader
 
-### Feed Groups
+Article cards show the title, source, time, and read state. The selected card uses `aria-current="true"`. The list must continue to work with many articles; do not remove virtualization.
 
-Groups support two distinct interactions:
-- **Caret (`data-caret`)** — clicking the ▶/▼ arrow only toggles expand/collapse, no article load
-- **Name / Icon** — clicking anywhere else selects the group, loading all articles from all feeds in that group
+The reader keeps images within the reading column. Images keep their natural shape. The list can use a smaller, cropped thumbnail. The reader can use a larger image from the article.
 
-The group header gets `.active` styling when selected (`aria-current="true"`). Auto-expands the group when selected while collapsed.
+Use native video controls when possible. If a Reddit video cannot play, show the poster and a browser action. Do not show a still image as if it were a working player.
 
-When viewing a group, new articles from any feed in that group trigger an automatic reload if the list is short (<50 items).
+## Dialogs and menus
 
-### Search Input
+Dialogs use `role="dialog"` and `aria-modal="true"`. Give each dialog an accessible name. Link an error message with `aria-describedby` when the error is visible. The Escape key closes a dialog when no save operation is in progress.
 
-- `role="search"` on the wrapping `<form>`
-- `aria-label="Search feeds and articles"` on the `<input>`
-- A **clear (×) button** appears when the query is non-empty — calls `setSearchQuery('')` directly, no functionality change
+Menus use `role="menu"` and `role="menuitem"`. Each menu action must be usable with the keyboard.
 
-### Context Menus
+## Keyboard and screen readers
 
-- `<menu role="menu" aria-label="…">`
-- Each `<li role="none">` wraps `<button role="menuitem">`
-- Animated in via `fadeIn 120ms` CSS
-
----
-
-## Article Cards
-
-- Slightly rounded (`border-radius: var(--radius-md)`) with `margin: 2px var(--space-1)` so cards feel like discrete list items
-- Hover: `translateX(1px)` subtle push-right for depth cue
-- Unread dot: 8px with `box-shadow` glow
-- Title: 3-line clamp (was 2) for more content at a glance
-- `aria-label` = `"${title}, ${feedName}, read/unread, ${relativeTime}"`
-- `aria-current="true"` on selected card
-
----
-
-## Article Reader
-
-### Actions toolbar
-
-Action buttons now have explicit visual shape: `border: 1px solid var(--border-light)`, `background: var(--bg-surface)`, `border-radius: var(--radius-md)`. Saved states use tinted backgrounds.
-
-### Link Popup
-
-- `role="dialog" aria-label="Link options"`
-- Closes on `Escape` key
-- `backdrop-filter: blur(8px)` for visual clarity over content
-
-### Reading content
-
-- Max width 780px, `margin: 0 auto` for centered reading column
-- Search highlight uses `color-mix(in srgb, var(--brand-500), transparent 70%)` — theme-aware, not hardcoded yellow
-
----
-
-## Modals
-
-### Common pattern
-
-```tsx
-<div
-  className={styles.overlay}
-  onClick={e => { if (e.target === e.currentTarget) onClose() }}
-  onKeyDown={e => { if (e.key === 'Escape') onClose() }}
->
-  <div role="dialog" aria-modal="true" aria-label="…">
-```
-
-All modal overlays have `backdrop-filter: blur(4px)`.
-
-### AddFeedModal
-
-- `aria-describedby="feed-error"` links dialog to error message when visible
-
-### SettingsPanel
-
-- Toggles have `tabIndex={0}` + `onKeyDown` for Space/Enter activation
-- Sliders have `aria-label` with current value: `"UI Scale: 16px"`
-- **Accent Color** — 5 named presets + a rainbow swatch that opens the native OS color picker (`<input type="color">`). Hex colors are auto-derived into `--brand-400` (lightened 25%) and `--brand-600` (darkened 15%) via `lighten()`/`darken()` helpers in `utils/theme.ts`.
-
----
-
-## Accessibility
-
-### Focus ring
-
-`outline: 3px solid var(--border-focus); outline-offset: 3px` — visible on both dark and light themes.
-
-### Keyboard navigation
-
-| Component | Keys |
+| Control | Keys |
 |---|---|
-| Sidebar nav items | Tab, Enter/Space |
-| Feed items (role=button) | Tab, Enter/Space |
-| Group toggle | Enter/Space, propagates `aria-expanded` |
-| Article list | ↑/↓ or j/k |
-| Settings toggles | Tab, Space/Enter |
-| Modals | Escape to close |
-| Link popup | Escape to close |
+| Sidebar item | Tab, then Enter or Space. |
+| Group arrow | Enter or Space. |
+| Article list | Up/Down or `j`/`k`. |
+| Settings switch | Tab, then Enter or Space. |
+| Dialog or link popup | Escape to close. |
 
-### Screen readers
+Show a visible focus ring on interactive controls. Use `role="status"` for loading status. Use `aria-current` for the selected view or article.
 
-- `role="search"` on search form
-- `aria-current="page"` on active system view
-- `aria-current="true"` on selected article
-- `role="menu"` / `role="menuitem"` on context menus
-- `role="status" aria-label="Loading…"` on spinners
-
-### Reduced motion
-
-```css
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-```
-
-### Text selection
-
-```css
-::selection { background: color-mix(in srgb, var(--brand-500), transparent 70%); }
-```
-
----
-
-## CSS Spinner
-
-Replaces the `⟳` spinning character everywhere. Apply the global `.spinner` class to an empty `<span>`:
+Use the global `.spinner` class for a loading indicator:
 
 ```tsx
 <span className="spinner" role="status" aria-label="Loading…" />
 ```
 
-```css
-.spinner {
-  width: 14px; height: 14px;
-  border: 2px solid var(--border-light);
-  border-top-color: var(--brand-400);
-  border-radius: 50%;
-  animation: spin-border 0.7s linear infinite;
-}
-```
+## Motion and sync status
 
----
+Respect `prefers-reduced-motion`. Shorten or remove decorative motion when this preference is active.
 
-## Synchronisation feedback
+The toolbar Sync icon rotates while a full sync runs. It flashes green three times when the full operation ends. Per-feed errors are separate from the full-sync animation. This matters when Reddit requests continue after other feeds finish.
 
-The toolbar Sync action reflects the batch lifecycle rather than the status of whichever feed happened to finish last:
-
-- continuous rotation while a batch event reports `syncing`;
-- disabled/re-entry-safe behaviour while the scheduler operation is active;
-- exactly three green flashes after the last active operation completes;
-- per-feed errors/deferred states remain separate from the global completion animation.
-
-This distinction is important for Reddit, where a serial queue can continue after ordinary feeds have already finished.
-
-## Empty, cached and error states
-
-Do not conflate “no articles stored” with “latest refresh failed”. The centre pane should continue showing cached articles after a network error. Sidebar badges represent stored unread/total counts; transient sync health is an adjacent status indicator.
-
-For a selected feed, the renderer may use the currently loaded article count as an immediate fallback while the refreshed feed metadata is being fetched.
-
-## Rich media behaviour
-
-- Article images preserve intrinsic aspect ratio and are bounded by the reading column.
-- List thumbnails are cropped independently and should not dictate reader image dimensions.
-- Media loads lazily and supplies accessible fallback/browser actions.
-- Reddit video uses native controls; a poster must never masquerade as the final playable element.
-- Reduced-motion preferences apply to sync and loading animations as well as decorative transitions.
+Do not treat a sync error as an empty feed. Keep stored articles visible after a network error. Sidebar badges show stored article counts. An adjacent status indicator shows the current sync state.

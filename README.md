@@ -1,10 +1,10 @@
 <img width="2172" height="724" alt="image" src="https://github.com/user-attachments/assets/0346e921-2e8c-4371-9ff7-54567759fbbb" />
 
 
-  **A private, local-first desktop feed reader.**
+  **A desktop feed reader that keeps your data on your computer.**
 
   > [!WARNING]
-  > Albatros is actively under construction. Features, the data model, and the MCP interface may change between releases. Use release builds with care and keep a backup of your local database.
+  > Albatros is under development. Features, database fields, and the MCP interface can change. Back up your local database before you install a new release.
 
   RSS · Atom · JSON Feed · Reddit · YouTube channels
 
@@ -30,7 +30,7 @@
 
 ---
 
-Albatros keeps subscriptions, downloaded articles and reading state on your computer. It combines a focused three-pane interface with reliable synchronisation, rich Reddit support and local Laya sorting—without requiring an account or hosted backend.
+Albatros stores your feeds, downloaded articles, and reading state on your computer. Use the three-pane interface to read feeds, including Reddit and public YouTube channels. Laya folders sort posts on your computer. You do not need an account or an Albatros server.
 
 ## Features
 
@@ -52,7 +52,7 @@ Albatros keeps subscriptions, downloaded articles and reading state on your comp
 
 ## Advanced search
 
-The search field supports a compact query language for finding articles in your local library. Plain terms are prefix-matched, and the operators below can be combined in one query.
+Use the search field to find articles stored on your computer. A plain word also finds words that start with the same letters. You can use more than one operator in a query.
 
 | Operator | Example | Meaning |
 |---|---|---|
@@ -67,7 +67,7 @@ The search field supports a compact query language for finding articles in your 
 | After a date | `after:2026-01-01` | Articles published on or after the given day. |
 | Year range | `ransomware 2025..2026` | Restrict results to an inclusive year range. |
 
-Negative clauses filter results but are not highlighted. Positive terms and phrases are highlighted in the list and article reader.
+Excluded words filter results. The list and reader highlight matched words and phrases, but they do not highlight excluded words.
 
 ## Installation
 
@@ -84,13 +84,13 @@ Negative clauses filter results but are not highlighted. Positive terms and phra
 
 </div>
 
-Download the file for your platform from the latest release. On Linux, make the AppImage executable before opening it: `chmod +x Albatros-*.AppImage`.
+Download the file for your system from the latest release. On Linux, make the AppImage executable before you open it: `chmod +x Albatros-*.AppImage`.
 
-Channel pages such as `https://www.youtube.com/@handle` can be added as feeds. Albatros reads public video listings from the channel page when the RSS endpoint is unavailable. YouTube may show a consent or anti-bot page; in that case, open the channel in the embedded browser and retry. Feed Properties lets you change a feed's name or URL. Changing the URL retains existing articles and triggers a refresh.
+To add a YouTube channel, enter a public channel URL such as `https://www.youtube.com/@handle`. Albatros reads the public video list if the RSS feed is not available. If YouTube shows a consent or anti-bot page, open the channel in the built-in browser and try again. To change a feed name or URL, open **Feed Properties**. When you change a URL, Albatros keeps the articles already stored and refreshes the feed.
 
 ### Development
 
-Node.js 20 or 22 LTS and npm 9+ are recommended.
+Use Node.js 20 or 22 LTS and npm 9 or later.
 
 ```bash
 git clone https://github.com/xlr-aex/albatros.git
@@ -110,9 +110,9 @@ npm run dev
 
 ## Local Laya folders
 
-Laya folders sort new posts locally according to rules you define. Create a folder from **Laya folders**, select its source groups or individual feeds, then let the background worker evaluate new posts for each matching folder independently. A post may therefore appear in several folders. The top gauge shows overall progress; each folder card shows its own source-scope progress. Laya does not require an external model runtime.
+Laya folders sort new posts on your computer. Create a folder in **Laya folders**. Then select source groups or individual feeds. Albatros checks each post against each applicable folder rule. A post can appear in more than one folder. The top progress bar shows all Laya work. Each folder shows its own progress. Laya does not need a separate model service.
 
-The first use on Windows downloads a private Python runtime and the local Laya dependencies into Albatros’ application-data directory. Nothing is installed system-wide. See [Laya folders](docs/laya-folders.md) for scope rules, controls and troubleshooting.
+The first time you use Laya on Windows, Albatros downloads Python and the required Laya files into its application-data directory. It does not change the system Python installation. See [Laya folders](docs/laya-folders.md) for source rules, controls, and fault finding.
 
 <img width="1892" height="667" alt="image" src="https://github.com/user-attachments/assets/397b9709-1a84-43c7-bb09-8a63df8967ca" />
 
@@ -120,7 +120,7 @@ The first use on Windows downloads a private Python runtime and the local Laya d
 
 ## MCP server
 
-Albatros starts an authenticated, local [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server with the desktop application. It lets an MCP client search your locally stored feed library and, when explicitly requested, manage source groups, feeds, and Laya folders.
+Albatros starts a local [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server when the desktop application starts. An MCP client can search articles stored on your computer. It can also manage source groups, feeds, and Laya folders when you request these actions.
 
 | Setting | Value |
 |---|---|
@@ -128,7 +128,7 @@ Albatros starts an authenticated, local [Model Context Protocol (MCP)](https://m
 | Authentication | `Authorization: Bearer <token>` |
 | Default exposure | Loopback only (this computer) |
 
-The application prints a bearer token to its terminal when it starts. To use a stable token, set `ALBATROS_MCP_TOKEN` to a value of at least 24 characters before launching Albatros. You can also change the port with `ALBATROS_MCP_PORT`.
+Albatros prints a bearer token in its terminal at startup. To use the same token each time, set `ALBATROS_MCP_TOKEN` to at least 24 characters before you start Albatros. To change the port, set `ALBATROS_MCP_PORT`.
 
 ```json
 {
@@ -143,7 +143,7 @@ The application prints a bearer token to its terminal when it starts. To use a s
 }
 ```
 
-Available read-only tools cover source-group and feed discovery, post search, recent posts, post details, Laya status and folders, and a technology radar. Separate tools can create source groups and feeds or create and update Laya folders. Do not expose the local MCP port to the public internet; keep the token private. For client-specific setup and usage examples, see the [MCP guide](docs/mcp.md).
+Read-only tools list groups and feeds, search posts, show recent posts and post details, report Laya status, and provide a technology radar. Other tools create groups and feeds or change Laya folders. Keep the token private. Do not expose the MCP port to the internet. See the [MCP guide](docs/mcp.md) for client setup and examples.
 
 
 ## Keyboard navigation
@@ -164,7 +164,7 @@ See the [changelog](CHANGELOG.md) for release highlights.
 
 ## Data and privacy
 
-The database is stored locally as `albatros.db` in Electron's application-data directory. Albatros does not collect telemetry. Close the application before manually copying the database for backup.
+Albatros stores `albatros.db` in Electron's application-data directory. Albatros does not collect telemetry. Close the application before you copy the database for a backup.
 
 ## Contributing
 
@@ -175,7 +175,7 @@ npm run test:unit
 npm run build
 ```
 
-Keep privileged operations in the Electron main process, expose only narrow methods through the preload bridge, and include focused tests with behavioural changes.
+Keep network, file, and database operations in the Electron main process. Expose only the required methods through the preload bridge. Add focused tests when you change behavior.
 
 ## License
 

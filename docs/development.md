@@ -24,19 +24,19 @@ albatros/
 
 ## Runtime processes
 
-Electron Vite builds three targets:
+Electron Vite builds three parts:
 
 - `out/main/index.js`: privileged Electron main process;
 - `out/preload/index.js`: isolated bridge;
 - `out/renderer/`: browser React bundle.
 
-During development, Vite serves the renderer on port 5273 and reloads it while Electron runs the main/preload outputs.
+During development, Vite serves the renderer on port 5273. It reloads the renderer after a change. Electron runs the main and preload code.
 
 ## Recommended toolchain
 
-Use Node.js 20 or 22 LTS and npm. `better-sqlite3` is a native dependency and must target Electron's ABI, not merely the host Node ABI. `npm install` runs `electron-builder install-app-deps` automatically through `postinstall`.
+Use Node.js 20 or 22 LTS and npm. `better-sqlite3` contains native code. Build it for Electron's ABI. A build for the local Node ABI is not sufficient. `npm install` runs `electron-builder install-app-deps` in the `postinstall` step.
 
-Do not install this npm project with pnpm unless the lockfile and lifecycle workflow are deliberately migrated: pnpm may restructure `node_modules`, and interrupted installs can leave Electron's binary absent.
+Use npm with `package-lock.json`. Do not use pnpm unless you also change the lockfile and install workflow. pnpm can change `node_modules`. An interrupted install can leave the Electron executable missing.
 
 ## Local workflow
 
@@ -54,7 +54,7 @@ npm run test:unit
 npm run build
 ```
 
-All four commands must pass with zero errors and zero warnings. Existing unrelated issues should not be mechanically rewritten as part of a focused fix, but new code may not introduce new lint findings.
+Run all four commands. Each command must finish without an error. New code must not add lint warnings.
 
 ## Native dependency recovery
 
@@ -70,7 +70,7 @@ If Electron starts but SQLite reports an ABI/module-version error:
 npx electron-builder install-app-deps
 ```
 
-Avoid `npm rebuild better-sqlite3` under an unsupported bleeding-edge Node version; that rebuild targets Node, while the application needs Electron 34.
+Do not use `npm rebuild better-sqlite3` with an unsupported Node version. That command builds for Node. Albatros needs a build for Electron 34.
 
 ## Change boundaries
 
@@ -98,16 +98,16 @@ Avoid `npm rebuild better-sqlite3` under an unsupported bleeding-edge Node versi
 
 ## Testing strategy
 
-The fast unit suite currently concentrates on deterministic logic:
+The unit tests cover logic that does not need a live service:
 
 - RSS/Atom/JSON parser normalisation and thumbnail extraction;
 - article HTML/image recovery and Reddit player conversion;
 - formatting utilities.
 - feed URL validation and feed-properties editing.
 
-When fixing a publisher-specific sample, reduce the feed fragment to the smallest fixture that demonstrates the behaviour. Test distinct publisher formats once; duplicating ten nearly identical samples provides less value than covering different namespaces/lazy-loading conventions.
+For a publisher-specific defect, use a small feed sample that shows the defect. Test different feed formats and image attributes. Avoid many tests that use almost the same sample.
 
-Network rate limiting and Electron session behaviour require an integration or manual smoke test. Keep such tests bounded to one provider request and do not add live-network tests to the default unit suite.
+Use an integration or manual test for network rate limits and Electron session behavior. Limit each test to one provider request. Keep live network tests out of the default unit test suite.
 
 ## Manual smoke-test checklist
 

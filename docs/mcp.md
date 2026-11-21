@@ -1,15 +1,12 @@
-# MCP local Albatros
+# Local MCP server
 
-Albatros expose un serveur MCP local au démarrage : `http://127.0.0.1:8765/mcp`.
-Il est accessible uniquement depuis cet ordinateur et nécessite un jeton Bearer.
-Le jeton est affiché une fois dans le terminal d'Albatros au lancement. Vous pouvez
-le fixer avant de lancer l'application avec `ALBATROS_MCP_TOKEN` (24 caractères ou
-plus) pour utiliser une valeur connue.
+Albatros starts an MCP server at `http://127.0.0.1:8765/mcp`. Only programs on this computer can connect to this address. Each request must include a bearer token.
+
+Albatros prints the token once in its terminal at startup. To use the same token each time, set `ALBATROS_MCP_TOKEN` before you start Albatros. The value must contain at least 24 characters.
 
 ## Antigravity
 
-Dans `%USERPROFILE%\.gemini\config\mcp_config.json` (global) ou
-`.agents\mcp_config.json` (projet) :
+Add this configuration to `%USERPROFILE%\.gemini\config\mcp_config.json` for all projects. For one project, use `.agents\mcp_config.json`:
 
 ```json
 {
@@ -17,16 +14,18 @@ Dans `%USERPROFILE%\.gemini\config\mcp_config.json` (global) ou
     "albatros": {
       "serverUrl": "http://127.0.0.1:8765/mcp",
       "headers": {
-        "Authorization": "Bearer VOTRE_JETON_ALBATROS"
+        "Authorization": "Bearer YOUR_ALBATROS_TOKEN"
       }
     }
   }
 }
 ```
 
+Replace `YOUR_ALBATROS_TOKEN` with your token.
+
 ## OpenCode
 
-Dans `opencode.json` :
+Add this configuration to `opencode.json`:
 
 ```json
 {
@@ -36,49 +35,42 @@ Dans `opencode.json` :
       "type": "remote",
       "url": "http://127.0.0.1:8765/mcp",
       "headers": {
-        "Authorization": "Bearer VOTRE_JETON_ALBATROS"
+        "Authorization": "Bearer YOUR_ALBATROS_TOKEN"
       }
     }
   }
 }
 ```
 
+Replace `YOUR_ALBATROS_TOKEN` with your token.
+
 ## ChatGPT
 
-N'exposez jamais ce port sur Internet. Créez un Secure MCP Tunnel OpenAI vers
-`http://127.0.0.1:8765/mcp`, configurez le même en-tête `Authorization`, puis
-ajoutez l'URL du tunnel comme connecteur MCP dans ChatGPT.
+Keep the local MCP port off the public internet. Create an OpenAI Secure MCP Tunnel to `http://127.0.0.1:8765/mcp`. Set the same `Authorization` header in the tunnel. Then add the tunnel URL as an MCP connector in ChatGPT.
 
-Les outils de recherche sont en lecture seule. Les outils qui créent, modifient,
-mettent en pause ou relancent un dossier Laya sont explicitement séparés.
+Search tools only read data. Separate tools create or change feeds, groups, and Laya folders.
 
-## Recherche efficace pour les agents
+## Search posts
 
-`search_posts` accepte désormais une question complète. Albatros en extrait les
-termes utiles, les cherche en mode tolérant, puis utilise un repli si l’index
-plein texte ne retourne rien. Ne forcez donc pas l’agent à découper une question
-en mots-clés un par un.
+You can give `search_posts` a complete question. Albatros extracts useful terms and searches stored posts. If the full-text index returns no result, Albatros tries a broader search. You do not need to split a question into single words.
 
-Exemples de demandes utiles à l’agent :
+Example requests:
 
 ```text
-Utilise technology_radar sur les 30 derniers jours. Analyse uniquement les
-avancées techniques citées, sans rechercher des mots relatifs aux revenus, puis
-classe les opportunités par potentiel produit en citant les posts concernés.
+Use technology_radar for the last 30 days. List the technical advances.
+Rank product opportunities and cite the related posts.
 
-Liste les flux du groupe AI, puis cherche les annonces récentes concernant les
-LLM locaux, avec le contenu des posts et les sources exactes.
+List feeds in the AI group. Find recent news about local LLMs.
+Show post content and exact sources.
 
-Utilise get_recent_posts pour les groupes News et OSINT depuis le 2026-10-16,
-puis construis une chronologie en distinguant les faits confirmés des analyses.
+Use get_recent_posts for the News and OSINT groups since 2026-10-16.
+Make a timeline. Separate confirmed facts from analysis.
 ```
 
-Outils de recherche :
+Search tools:
 
-- `list_source_groups`, `list_feeds` : découverte précise des groupes et flux.
-- `search_posts` : requête naturelle, filtres `groupIds`, `feedIds`, `since`,
-  `until`, et contenu optionnel.
-- `get_recent_posts` : veille large sans mot-clé.
-- `get_post_details` : vérification des faits et contexte avant citation.
-- `technology_radar` : regroupement local des signaux techniques récents, sans
-  biais vers des termes financiers.
+- `list_source_groups` and `list_feeds` list groups and feeds.
+- `search_posts` accepts a question. You can add `groupIds`, `feedIds`, `since`, and `until` filters. You can also request post content.
+- `get_recent_posts` lists recent posts without a search term.
+- `get_post_details` shows the source and full context for a post.
+- `technology_radar` groups recent technical signals.

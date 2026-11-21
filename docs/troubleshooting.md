@@ -2,7 +2,7 @@
 
 ## `Error: Electron uninstall`
 
-`electron-vite` found the npm package but not Electron's downloaded executable. This usually follows `npm install --ignore-scripts` or an interrupted install.
+`electron-vite` found the npm package, but it cannot find the Electron executable. This can happen after `npm install --ignore-scripts` or an interrupted install.
 
 ```bash
 node node_modules/electron/install.js
@@ -14,27 +14,27 @@ Confirm `node_modules/electron/dist/electron.exe` exists on Windows (or the equi
 
 ## `Cannot find module ... electron-vite` or `vitest`
 
-`node_modules` is incomplete or was restructured by another package manager. This repository is npm/`package-lock.json` based.
+`node_modules` is incomplete, or another package manager changed it. This project uses npm and `package-lock.json`.
 
 ```bash
 npm install
 ```
 
-If a different package manager was interrupted, remove only its local temporary store after verifying the path, then reinstall with npm. Do not delete the project or user-data directory.
+If another package manager stopped during installation, check the path to its temporary files. Remove only those files. Then install with npm. Keep the project and user-data directories.
 
 ## `better_sqlite3.node` ABI/module-version error
 
-The native binding was built for host Node instead of Electron.
+The native module was built for Node instead of Electron.
 
 ```bash
 npx electron-builder install-app-deps
 ```
 
-Node 20/22 LTS is recommended for development. Node 26 may lack a compatible prebuilt Node binary and fall back to a local compiler, but the application still needs an Electron-targeted rebuild.
+Use Node 20 or 22 LTS for development. Node 26 can require a local compiler because a prebuilt module may be unavailable. Albatros still needs a build for Electron.
 
 ## Visual C++/ClangCL build failure on Windows
 
-Prefer the Electron prebuild/rebuild command above. If compilation from source is genuinely required, install the Visual Studio Build Tools workload and the toolset named in the error. Do not change the project's platform toolset merely to suppress the message without verifying ABI compatibility.
+First, try the Electron rebuild command above. If you must compile from source, install Visual Studio Build Tools and the toolset named in the error. Do not change the platform toolset only to hide the error. Check ABI compatibility.
 
 ## Sync icon does not rotate
 
@@ -45,9 +45,9 @@ Prefer the Electron prebuild/rebuild command above. If compilation from source i
 
 ## Sync is slow
 
-Ordinary providers run concurrently, but Reddit is intentionally serialised and spaced to avoid HTTP 429. A library with many subreddit subscriptions may therefore take tens of seconds. Empty feeds are prioritised.
+Ordinary feeds can sync together. Reddit feeds sync one at a time to reduce HTTP 429 errors. If you have many Reddit feeds, sync can take tens of seconds. Albatros checks empty feeds first.
 
-Do not repeatedly click Sync: the scheduler coalesces overlapping full refreshes, and repeated provider traffic cannot make Reddit faster.
+Do not select **Sync** again while a sync runs. Albatros combines overlapping full sync requests. More requests will not make Reddit faster.
 
 ## Embedded Reddit page is black or empty
 

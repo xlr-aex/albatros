@@ -1,22 +1,22 @@
 # Albatros documentation
 
-This is the entry point for user, operator and contributor documentation. It describes the code currently present in the repository; implementation details that change frequently are kept in the focused guides below.
+Use this page to find user and developer guides. These guides describe the current code. Each detailed topic has its own guide.
 
 ## Product overview
 
-Albatros is an Electron desktop feed reader with a React renderer and a native SQLite database. Its core design goals are:
+Albatros is a desktop feed reader. It uses Electron, React, and SQLite. The main design rules are:
 
-1. **Local ownership** — subscriptions, article content and reading state live in a local database.
-2. **Responsive reading** — list queries are indexed, large lists are virtualised and media loads lazily.
-3. **Resilient ingestion** — feeds are fetched conditionally, retried conservatively and scheduled adaptively.
-4. **Untrusted-content isolation** — feed HTML is treated as hostile and sanitised at the rendering boundary.
-5. **Local classification** — Laya sorts posts into local folders without an Albatros cloud service or an external model runtime.
+1. **Local data:** Keep feeds, articles, and reading state in a local database.
+2. **Fast reading:** Use indexed queries, virtual lists, and lazy media loading.
+3. **Reliable sync:** Use HTTP cache headers, controlled retries, and adaptive schedules.
+4. **Safe display:** Treat feed HTML as untrusted. Clean it before display.
+5. **Local sorting:** Use Laya to sort posts into folders on this computer.
 
 ## Architecture
 
 ### Electron main process — `src/main/`
 
-The main process owns privileged operations:
+The main process does operations that need access to the system:
 
 - opens and migrates `albatros.db` through `better-sqlite3`;
 - provides feed, article, search and settings services;
@@ -28,15 +28,15 @@ The main process owns privileged operations:
 
 ### Preload bridge — `src/preload/`
 
-`contextBridge` publishes the typed `window.api` surface. The renderer does not receive raw `ipcRenderer`, filesystem access or Node APIs. Every new main-process capability should be explicitly added to this bridge and documented in [the IPC reference](docs/api-ipc.md).
+`contextBridge` gives the renderer the typed `window.api` interface. The renderer cannot use raw `ipcRenderer`, Node APIs, or the file system. Add each new main-process function to this bridge. Document it in the [IPC reference](docs/api-ipc.md).
 
 ### Renderer — `src/renderer/`
 
-The renderer is a React 19 application. Zustand stores coordinate feeds, articles and UI state. Long article lists use `@tanstack/react-virtual`. External HTML is normalised, sanitised with DOMPurify and only then injected into the reader.
+The renderer uses React 19. Zustand stores hold feed, article, and interface state. Long article lists use `@tanstack/react-virtual`. Before the reader displays external HTML, it normalizes the HTML and cleans it with DOMPurify.
 
 ### Persistent browser partition
 
-Embedded pages use the Electron partition `persist:adblock`. It runs a prebuilt ad/tracker blocker with **network filtering only** — cosmetic filtering must stay disabled because its page injections violate Reddit's strict CSP and blank the embedded webview — plus browser-compatible request handling for Reddit. The feed HTTP client also uses this session for Reddit RSS requests because anonymous Node networking is aggressively rate-limited. See [Media and Reddit](docs/media-and-reddit.md) for the exact constraints.
+Embedded pages use the Electron partition `persist:adblock`. It blocks ads and trackers at the network level. Keep cosmetic filtering off: its injected scripts make Reddit pages blank. Reddit RSS requests also use this browser session because Reddit limits anonymous Node requests. See [Media and Reddit](docs/media-and-reddit.md).
 
 ## Principal data flow
 
@@ -57,7 +57,7 @@ ArticleService transaction ──► SQLite + FTS/counter triggers
         └─► sync:update IPC ──► sidebar/list refresh
 ```
 
-Selecting an article follows the reverse read path: React invokes `window.api.articles.get`, the preload forwards the request, `ArticleService` reads SQLite, and the renderer normalises/sanitises content before display.
+When you select an article, React calls `window.api.articles.get`. The preload bridge sends the request to `ArticleService`. The service reads SQLite. The renderer cleans the content before it displays it.
 
 ## Guide index
 
@@ -71,6 +71,7 @@ Selecting an article follows the reverse read path: React invokes `window.api.ar
 | [Media and Reddit](docs/media-and-reddit.md) | Reader/media contributors | Images, lazy sources, Reddit JSON/comments, HLS video and fallbacks. |
 | [UI/UX](docs/ui-ux.md) | Renderer contributors | Three-pane interaction, state, accessibility and motion. |
 | [Laya folders](docs/laya-folders.md) | Users and contributors | Local classifier, source scopes, progress and runtime behaviour. |
+| [Local MCP server](docs/mcp.md) | Users and contributors | Token setup, client configuration, and search tools. |
 | [Troubleshooting](docs/troubleshooting.md) | Users/operators | Electron installation, SQLite bindings, HTTP 429 and media issues. |
 
 ## Security boundaries and limitations
@@ -84,4 +85,4 @@ Selecting an article follows the reverse read path: React invokes `window.api.ar
 
 ## Documentation maintenance
 
-When behaviour changes, update the focused guide and the README if the change affects installation or user-visible features. Verify names against the preload API and package scripts instead of documenting planned functionality as if it already exists.
+When behavior changes, update the related guide. Update the README if users can see the change. Check method and script names in the preload API and `package.json`. Describe only functions that exist in the code.

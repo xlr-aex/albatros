@@ -1,6 +1,6 @@
 # Synchronisation engine
 
-The synchronisation stack runs entirely in the Electron main process. Its job is to fetch heterogeneous feeds without blocking the renderer, normalise entries and commit them efficiently while keeping enough history to diagnose failures.
+The sync code runs in the Electron main process. It downloads feeds without blocking the renderer. It converts entries to one format, saves them, and records errors for fault finding.
 
 ## Components
 
@@ -16,11 +16,11 @@ The synchronisation stack runs entirely in the Electron main process. Its job is
 - a 10 MiB response limit, checked from `Content-Length` and again after reading;
 - structured `FeedHttpError` values containing status and parsed `Retry-After` delay.
 
-Ordinary feeds use the main process `fetch`. Reddit URLs use `session.fromPartition('persist:adblock').fetch()`. That persistent Chromium session shares browser networking behaviour and cookies with the embedded reader and avoids the severe rate limiting seen with anonymous Node requests.
+Ordinary feeds use `fetch` in the main process. Reddit URLs use `session.fromPartition('persist:adblock').fetch()`. This Chromium session shares cookies with the built-in browser. It also reduces the rate limits that affect anonymous Node requests.
 
-Public YouTube channel pages are fetched through the main process and parsed from their public video listing. The channel-page fetch validates each redirect. A consent or anti-bot page produces a visible sync error; opening the channel in the embedded browser and retrying may help. Publisher metadata updates preserve feed names edited by the user.
+The main process downloads public YouTube channel pages and reads their video list. It checks each redirect. If YouTube returns a consent or anti-bot page, Albatros shows a sync error. Open the channel in the built-in browser, then try again. A sync does not replace a feed name that the user edited.
 
-The private-host check is intentionally described as lightweight: it rejects obvious literal hosts but does not perform a DNS resolution audit for every redirect.
+The private-host check blocks known local and private addresses. Check `ExternalUrlPolicy` before you change the redirect rules.
 
 ### `FeedParser.ts`
 
@@ -38,7 +38,7 @@ Parser unit tests live beside the implementation in `FeedParser.test.ts`.
 
 ### `SyncEngine.ts`
 
-The engine orchestrates fetch, parse and persistence:
+The engine completes these steps:
 
 1. create a `sync_log` row and emit `syncing`;
 2. wait for the relevant provider/host limiter;
@@ -49,7 +49,7 @@ The engine orchestrates fetch, parse and persistence:
 7. update feed metadata and its next schedule;
 8. finish the log and emit the terminal status.
 
-Global concurrency is capped at five operations. Each ordinary host is capped at two concurrent requests. All Reddit hostnames share a single limiter and are processed serially.
+The engine runs at most five operations at one time. It sends at most two requests at one time to each ordinary host. It processes Reddit requests one at a time.
 
 ### `Scheduler.ts`
 
@@ -65,18 +65,18 @@ The toolbar's **Sync** action passes all active feeds, whereas normal ticks only
 
 ## Full refresh behaviour
 
-Ordinary feeds start concurrently within global/per-host limits. Reddit feeds form a separate serial queue that runs alongside ordinary providers. Reddit subscriptions with no stored posts are sorted first, then older `last_fetched_at` values are preferred.
+Ordinary feeds start together, within the global and host limits. Reddit feeds use a separate queue and run one at a time. The engine checks Reddit feeds with no stored posts first. It then checks feeds with the oldest `last_fetched_at` value.
 
 This design intentionally avoids two previously problematic patterns:
 
 - firing dozens of subreddit requests in parallel, which triggers HTTP 429 responses;
 - combining many subreddit names into one synthetic RSS URL, which may return entries for only part of the requested set.
 
-Reddit request starts are spaced by at least 750 ms. A provider-wide cooldown is honoured after a 429 response, and deferred feeds keep their cached posts rather than being treated as broken.
+At least 750 ms passes between Reddit request starts. After an HTTP 429 response, the engine waits before it sends more Reddit requests. A delayed feed keeps its stored posts.
 
 ## Retry and fallback behaviour
 
-One feed may be attempted up to three times. Retries wait two seconds. The final attempt ignores cached validators, which handles publishers that return an incorrect empty/unchanged response.
+The engine tries a feed at most three times. It waits two seconds before each retry. On the last attempt, it does not send cache validators. This can recover a feed when a publisher sends an incorrect unchanged response.
 
 If parsed content is empty or unusably short, the engine may try the corresponding `.rss`/`.atom` or `/rss`/`/atom` endpoint. A `404` can also trigger conventional alternatives such as `/feed/`.
 
@@ -126,4 +126,4 @@ Inspect the latest rows in `sync_log` and distinguish:
 - `deferred`: provider throttling or a scheduled cooldown;
 - `error`: retries were exhausted and `error_count` increased.
 
-A feed with existing articles should continue displaying them during `deferred` or `error` states. Sidebar badges represent stored unread/total article counts, not whether the last network request succeeded.
+Stored articles stay visible when a feed is `deferred` or has an `error`. Sidebar badges show stored article counts. They do not show the result of the last network request.

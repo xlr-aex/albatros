@@ -1,6 +1,6 @@
 # Database architecture
 
-Albatros uses native SQLite through `better-sqlite3` in the Electron main process. The old sql.js/WASM design is no longer used; legacy `persistDatabase()` functions remain as no-op compatibility shims.
+Albatros uses native SQLite through `better-sqlite3` in the Electron main process. It does not use the old sql.js/WASM database. The old `persistDatabase()` functions remain for compatibility, but they do not write data.
 
 ## Location and lifecycle
 
@@ -16,7 +16,7 @@ Typical paths:
 - Linux: `~/.config/albatros/albatros.db`
 - macOS: `~/Library/Application Support/albatros/albatros.db`
 
-One singleton connection is opened during bootstrap and closed during `before-quit`.
+Albatros opens one database connection at startup. It closes the connection during `before-quit`.
 
 ## Connection pragmas
 
@@ -49,7 +49,7 @@ Stores the canonical feed URL, publisher metadata, favicon, scheduling/cache hea
 - `is_active` pauses or disables a feed.
 - `title_is_custom` preserves a name edited in Feed Properties when publisher metadata is refreshed (migration 12).
 
-`article_count` is not stored. Feed queries compute it with a correlated count while excluding rows tagged internally as `reddit-comment`.
+Albatros does not store `article_count`. A feed query counts the articles when needed. The count excludes rows marked `reddit-comment`.
 
 ### `articles`
 
@@ -62,7 +62,7 @@ Stores normalised entries and local interaction state. The identity constraint i
 - `is_read`, `is_starred`, `is_saved`;
 - legacy nullable `summary` column, retained for compatibility with existing databases.
 
-Raw HTML is deliberately stored unsanitised. DOMPurify runs in the reader immediately before rendering.
+The database stores raw HTML. The reader uses DOMPurify to clean it before display.
 
 ### `articles_fts`
 
@@ -115,7 +115,7 @@ Insert/delete/update triggers increment or decrement `feeds.unread_count`. Daily
 
 ## Migrations
 
-Never edit an already-applied migration to change an existing installation. Add a new monotonically increasing entry to `MIGRATIONS` in `src/main/db/migrations/runner.ts`, make it idempotent where practical, and test both a new database and an upgraded copy.
+Do not edit a migration that users can already have. Add a migration with a higher version number to `MIGRATIONS` in `src/main/db/migrations/runner.ts`. Make it safe to run again when possible. Test a new database and an upgraded database.
 
 Migrations add group icons, thumbnails, corrected timestamps, legacy article summaries, query indexes, Laya data and custom feed-title tracking after the initial schema.
 

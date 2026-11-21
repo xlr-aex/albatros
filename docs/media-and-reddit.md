@@ -1,12 +1,12 @@
 # Media and Reddit pipeline
 
-Feed media is inconsistent: a thumbnail may come from an RSS extension, lazy-load attribute, resized CDN URL, HTML body or Reddit preview. Albatros resolves these sources in layers and keeps fallbacks instead of assuming one URL will always work.
+Feeds provide images in different ways. An image can come from RSS, an HTML attribute, a resized URL, or a Reddit preview. Albatros checks these sources in order. It keeps a backup image URL when possible.
 
 ## Feed parsing
 
-`FeedParser` extracts an explicit thumbnail/enclosure when the format provides one. Otherwise it examines article HTML for the first usable image and resolves relative URLs against the article or feed URL.
+`FeedParser` uses the thumbnail or enclosure given by the feed. If the feed has none, it finds the first usable image in the article HTML. It uses the article or feed URL to complete relative URLs.
 
-Inline `data:` assets and empty placeholders are not promoted to list thumbnails. The parser preserves the article's raw HTML so richer media can still be recovered later.
+The parser does not use inline `data:` images or empty placeholders as list thumbnails. It keeps the raw article HTML so the reader can find other media later.
 
 ## Reader HTML normalisation
 
@@ -20,24 +20,24 @@ Before DOMPurify and rendering, `normalizeArticleHtml()`:
 6. inserts the preferred thumbnail when the body has no usable image;
 7. converts Reddit player links into media placeholders instead of leaving a preview image that looks like a video.
 
-The reader attaches a one-shot error listener to upgraded images. If the original-size candidate fails, it switches to the known thumbnail without producing an infinite retry loop.
+The reader checks an upgraded image once. If it fails, the reader uses the known thumbnail. It does not retry without a limit.
 
 ## Image layout
 
-Article images use their natural aspect ratio, `max-width: 100%` and automatic height. They are constrained by the reading column/display rather than stretched to a fixed square. This preserves quality when a large source exists and prevents overflow on smaller panes.
+Article images keep their natural shape. They use `max-width: 100%` and automatic height. The reading column limits their size. Images do not extend beyond a narrow pane.
 
-List thumbnails remain intentionally small and may use publisher-provided crops; the reader and the list therefore do not always request the same asset.
+List thumbnails are small and can use a crop from the publisher. The list and reader can use different image URLs.
 
 ## Reddit post enrichment
 
-RSS often contains only a preview or link. For a selected Reddit article, the reader can load the post JSON in a hidden `persist:adblock` webview and recover:
+Reddit RSS often contains only a preview or link. When you open a Reddit article, the reader can load post JSON in a hidden `persist:adblock` webview. It can then get:
 
 - self-text HTML;
 - secure media metadata;
 - Reddit video fallback/HLS URLs;
 - preview/poster images.
 
-The original RSS images are retained as rescue candidates when the JSON self-text is more complete textually but lacks media.
+The reader keeps the RSS images as backup. It can use them if the JSON post has more text but no media.
 
 ## Reddit comments
 
@@ -54,7 +54,7 @@ Reddit-hosted video commonly separates video and audio and exposes an HLS playli
 - destroys the HLS instance when the article changes/unmounts;
 - shows a play/browser fallback when playback cannot be initialised.
 
-Loading HLS.js dynamically keeps the normal reader path lighter, although the production build still emits a separate sizeable HLS chunk.
+The reader loads HLS.js only when needed. The production build contains a separate HLS file.
 
 ## Embedded browser
 
@@ -81,4 +81,4 @@ The engine cache is versioned (`adblocker-engine-v2.bin`): the engine serialises
 | Embedded Reddit page stays black/empty | Cosmetic-filter preload violating page CSP (must stay disabled) or a challenge that never solved. | Check main-process logs for CSP refusals sourced from `@cliqz/adblocker-electron`; restart to reload the engine config. |
 | Reddit comments/self-text never load | Post `.json` endpoint blocked (HTTP 403) for the current session. | The hidden webview solves Reddit's challenge first; cached articles and the browser action remain available. |
 
-Any new media heuristic should be deterministic, preserve a fallback and include a unit test in `articleHtml.test.ts` or `FeedParser.test.ts`.
+When you add a media rule, make its result predictable. Keep a backup path. Add a test in `articleHtml.test.ts` or `FeedParser.test.ts`.

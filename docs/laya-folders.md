@@ -1,29 +1,29 @@
 # Laya folders
 
-Laya folders organise downloaded posts with a local classifier. They are independent from feed groups: feed groups organise the sidebar, while Laya folders are subject-based collections. Each selected folder evaluates a post independently, so one post can appear in multiple folders.
+Laya folders sort downloaded posts on your computer. Feed groups arrange feeds in the sidebar. Laya folders group posts by subject. Albatros checks each post against each applicable folder rule. A post can appear in more than one Laya folder.
 
 ## Create a folder
 
-Open **Laya folders** and enter a title and main subject. The optional include and exclude fields refine the classifier’s rule. Keep rules specific and concise; one subject per folder is easier to maintain than a broad mixed rule.
+Open **Laya folders**. Enter a name and a main subject. You can add include and exclude terms to make the rule more precise. Use one clear subject for each folder.
 
-## Choose a source scope
+## Select sources
 
-Open **Périmètre** on a folder to select where it may classify posts:
+Open **Périmètre** for the folder. Select the sources that Laya can check:
 
-- A selected source group includes every feed in that group.
-- Individual sources can be added without selecting their whole group.
-- Both selections are combined.
+- Select a source group to include all its feeds.
+- Select an individual feed to add it without its full group.
+- You can use both types of selection.
 
-Changes only take effect after **Enregistrer le périmètre**. A folder with no selected sources has no posts to process.
+Select **Enregistrer le périmètre** to save your changes. A folder with no selected sources has no posts to process.
 
-## Read progress and control sorting
+## Check progress and control sorting
 
-The progress card at the top shows all enabled Laya evaluations. Each folder card has a separate bar for its own selected sources. `processed / total` includes include, exclude and uncertain decisions, so it represents completed classification work rather than only posts assigned to that card.
+The top progress card shows all enabled Laya work. Each folder card shows progress for its selected sources. `processed / total` counts all completed decisions: include, exclude, and uncertain. It does not count only the posts assigned to the folder.
 
-Use **Mettre en pause** to stop background work without losing decisions. **Ré-analyser** clears and re-evaluates only the selected folder’s decisions for its sources; use it after changing its rule or source scope. Deleting a folder deletes only its memberships, not the underlying posts or decisions in other folders.
+Select **Mettre en pause** to stop background work. This does not remove completed decisions. After you change a rule or its sources, select **Ré-analyser** to check that folder again. This action clears and repeats only that folder's decisions. If you delete a folder, Albatros removes its post memberships. It keeps the posts and the decisions for other folders.
 
 ## Local runtime
 
-On its first Windows use, Albatros downloads an embedded Python runtime and the Laya dependencies into the application-data directory. This is private to Albatros and does not alter a system Python installation. Subsequent launches reuse it.
+The first time you use Laya on Windows, Albatros downloads Python and the required Laya files into its application-data directory. It does not change the system Python installation. Later starts use the same files.
 
-The first setup needs an internet connection and can take longer than later classifications. The bundled runtime is currently Windows-only. If startup fails, the Laya view displays the worker error; check the connection and restart Albatros before retrying.
+The first setup needs an internet connection and can take longer than later runs. The bundled runtime supports Windows only. If Laya does not start, read the worker error in the Laya view. Check your connection, restart Albatros, and try again.

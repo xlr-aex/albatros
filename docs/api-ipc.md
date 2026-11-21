@@ -1,8 +1,8 @@
 # IPC API reference
 
-The React renderer communicates with privileged code exclusively through `window.api`, exposed by `src/preload/index.ts` using Electron `contextBridge`. Renderer code must not import Electron or Node modules directly.
+The React renderer uses `window.api` to call privileged code. `src/preload/index.ts` exposes this interface through Electron `contextBridge`. Do not import Electron or Node modules into renderer code.
 
-All request/response methods return promises because they wrap `ipcRenderer.invoke()`. Event subscriptions return an unsubscribe function and should be cleaned up from React effects.
+Request methods return promises. Event subscriptions return a function that stops the subscription. Call that function when the React effect ends.
 
 ## `window.api.feeds`
 
@@ -34,7 +34,7 @@ All request/response methods return promises because they wrap `ipcRenderer.invo
 | `getGithubLinks()` | — | `Promise<GitHubLink[]>` | Extracts GitHub URLs from stored articles. |
 | `getRedditComments(url)` | Reddit post URL | `Promise<RedditCommentsResult>` | Fetches/caches post metadata and comments; invalid URLs return an empty result. |
 
-`ArticleListParams` supports the selected feed/group/system view, cursor pagination, read/saved/starred constraints and search-dependent usage in the stores. Consult the exported service type before extending it.
+`ArticleListParams` selects a feed, group, or system view. It also sets cursor paging and read, saved, or starred filters. Check the exported service type before you add a field.
 
 ## `window.api.search`
 
@@ -42,7 +42,7 @@ All request/response methods return promises because they wrap `ipcRenderer.invo
 |---|---|---|
 | `query(q, limit?)` | text, optional maximum | `Promise<SearchResult[]>` |
 
-Search results contain article identifiers and highlighted snippets produced from SQLite FTS4. Queries are compiled to bare prefix terms (`word*`, implicit AND), so partial words match. `%`, `_` and `\` are escaped before any `LIKE` fallback. Treat snippet markup as untrusted until it has passed the renderer's controlled rendering path.
+Search results include article IDs and short matched text from SQLite FTS4. A plain word becomes a prefix term (`word*`). Spaces between words mean AND. Before a `LIKE` fallback, the code escapes `%`, `_`, and `\`. Treat matched text as untrusted. Use the renderer's safe display path.
 
 ## `window.api.sync`
 
@@ -64,7 +64,7 @@ Status payload:
 }
 ```
 
-`feedId: 0` plus `scope: 'batch'` represents the global operation rather than a database feed.
+`feedId: 0` with `scope: 'batch'` identifies a full sync. It does not identify a stored feed.
 
 ## `window.api.settings`
 
@@ -101,7 +101,7 @@ The status payload contains `processed`, `scopeTotal` and a `folderProgress` map
 
 ## `window.api.debug`
 
-`debug.log(message)` sends renderer diagnostics to the main-process console. Do not send credentials, complete article bodies or personal model prompts through this convenience channel.
+`debug.log(message)` sends a message from the renderer to the main-process console. Do not send credentials or complete article bodies through this channel.
 
 ## Adding a new IPC method
 
@@ -112,4 +112,4 @@ The status payload contains `processed`, `scopeTotal` and a `folderProgress` map
 5. Document argument validation, return type and failure semantics here.
 6. Add a focused test where the logic can be separated from Electron.
 
-Avoid generic channels such as “execute SQL”, “read file” or “fetch arbitrary URL”; they defeat the security boundary provided by the preload allow-list.
+Do not add a general channel that can execute SQL, read any file, or fetch any URL. Such a channel would bypass the preload allow-list.
