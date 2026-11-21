@@ -13,43 +13,45 @@ export const ACCENT_COLORS = {
 
 export type AccentColor = keyof typeof ACCENT_COLORS
 
-/** Lighten a hex color by mixing it with white at `amount` (0–1). */
-function lighten(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  const r = (n >> 16) & 0xff
-  const g = (n >> 8) & 0xff
-  const b = n & 0xff
-  const lr = Math.round(r + (255 - r) * amount)
-  const lg = Math.round(g + (255 - g) * amount)
-  const lb = Math.round(b + (255 - b) * amount)
-  return `#${((lr << 16) | (lg << 8) | lb).toString(16).padStart(6, '0')}`
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 }
 
-/** Darken a hex color by mixing it with black at `amount` (0–1). */
+function contrastRatio(hex: string, otherLuminance: number): number {
+  const luminance = relativeLuminance(hex)
+  return (Math.max(luminance, otherLuminance) + 0.05) /
+    (Math.min(luminance, otherLuminance) + 0.05)
+}
+
 function darken(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  const r = Math.round(((n >> 16) & 0xff) * (1 - amount))
-  const g = Math.round(((n >> 8) & 0xff) * (1 - amount))
-  const b = Math.round((n & 0xff) * (1 - amount))
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+  const value = parseInt(hex.slice(1), 16)
+  const channel = (shift: number) => Math.round(((value >> shift) & 0xff) * (1 - amount))
+  return `#${((channel(16) << 16) | (channel(8) << 8) | channel(0)).toString(16).padStart(6, '0')}`
+}
+
+function readableForeground(hex: string): '#ffffff' | '#061714' {
+  return contrastRatio(hex, 1) >= contrastRatio(hex, 0)
+    ? '#ffffff'
+    : '#061714'
 }
 
 export function applyAccentColor(colorName: string) {
-  // Named preset
-  if (ACCENT_COLORS[colorName as AccentColor]) {
-    const c = ACCENT_COLORS[colorName as AccentColor]
-    document.documentElement.style.setProperty('--brand-400', c[400])
-    document.documentElement.style.setProperty('--brand-500', c[500])
-    document.documentElement.style.setProperty('--brand-600', c[600])
-    return
-  }
-  // Arbitrary hex color (#rrggbb or #rgb)
-  if (colorName.startsWith('#')) {
-    const hex = colorName.length === 4
-      ? '#' + [...colorName.slice(1)].map(c => c + c).join('')
-      : colorName
-    document.documentElement.style.setProperty('--brand-400', lighten(hex, 0.25))
-    document.documentElement.style.setProperty('--brand-500', hex)
-    document.documentElement.style.setProperty('--brand-600', darken(hex, 0.15))
-  }
+  const preset = ACCENT_COLORS[colorName as AccentColor]
+  const candidate = preset?.[500] ?? colorName
+  const hex = candidate.length === 4 && candidate.startsWith('#')
+    ? '#' + [...candidate.slice(1)].map((channel) => channel + channel).join('')
+    : candidate
+
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return
+
+  // CSS derives each shade from this one source of truth.  The values switch
+  // automatically with [data-theme], so toggling light/dark never leaves a
+  // light-mode accent washed out or a dark-mode accent too dim.
+  document.documentElement.style.setProperty('--accent-base', hex)
+  document.documentElement.style.setProperty('--brand-on-primary-dark', readableForeground(hex))
+  document.documentElement.style.setProperty('--brand-on-primary-light', readableForeground(darken(hex, 0.18)))
 }

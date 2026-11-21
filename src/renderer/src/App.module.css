@@ -12,32 +12,48 @@
 .resizer {
   position: relative;
   width: var(--resize-handle-w);
-  margin-left: calc(-1 * var(--resize-handle-w) / 2);
-  margin-right: calc(-1 * var(--resize-handle-w) / 2);
-  background: transparent;
+  margin: 0;
+  box-sizing: border-box;
+  background: var(--bg-base);
+  border-left: 1px solid var(--border-column, var(--border-subtle));
+  border-right: 1px solid var(--border-column, var(--border-subtle));
   cursor: col-resize;
-  z-index: 10;
+  z-index: 20;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .resizer:hover, .resizer:active {
-  /* Subtle highlight instead of full solid color to not overwhelm the handle */
-  background: rgba(59, 130, 246, 0.05); /* brand-500 with low opacity */
+  background: color-mix(in srgb, var(--brand-500), var(--bg-base) 92%);
+  border-color: color-mix(in srgb, var(--brand-500), transparent 65%);
 }
 
 .resizerHandle {
-  width: 4px;
-  height: 32px;
-  border-radius: 2px;
-  background: var(--border-light);
-  transition: background 150ms var(--ease-out), height 150ms var(--ease-out);
+  position: relative;
+  width: 6px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--text-muted), transparent 45%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-base), transparent 20%);
+  transition: background var(--transition-fast), width var(--transition-fast), height var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.resizerHandle::before {
+  content: '';
+  position: absolute;
+  inset: 11px 0;
+  background: radial-gradient(circle, var(--bg-base) 1px, transparent 1.4px) center / 3px 6px repeat-y;
+  opacity: 0.75;
 }
 
 .resizer:hover .resizerHandle,
 .resizer:active .resizerHandle {
   background: var(--brand-500);
-  height: 48px;
+  width: 8px;
+  height: 72px;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--brand-500), transparent 65%);
 }

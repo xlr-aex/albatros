@@ -103,6 +103,7 @@ The fast unit suite currently concentrates on deterministic logic:
 - RSS/Atom/JSON parser normalisation and thumbnail extraction;
 - article HTML/image recovery and Reddit player conversion;
 - formatting utilities.
+- feed URL validation and feed-properties editing.
 
 When fixing a publisher-specific sample, reduce the feed fragment to the smallest fixture that demonstrates the behaviour. Test distinct publisher formats once; duplicating ten nearly identical samples provides less value than covering different namespaces/lazy-loading conventions.
 

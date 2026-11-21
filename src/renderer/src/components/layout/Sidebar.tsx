@@ -52,6 +52,39 @@ function getFaviconFallbackUrl(feed: Feed): string {
   }
 }
 
+function getInputCaretX(input: HTMLInputElement, index: number): number {
+  const style = window.getComputedStyle(input)
+  const mirror = document.createElement('div')
+  const text = document.createTextNode(input.value.slice(0, index))
+  const caret = document.createElement('span')
+  caret.textContent = '\u200b'
+  Object.assign(mirror.style, {
+    position: 'fixed', left: '-10000px', top: '0', visibility: 'hidden',
+    whiteSpace: 'pre', font: style.font, letterSpacing: style.letterSpacing,
+    fontKerning: style.fontKerning, fontFeatureSettings: style.fontFeatureSettings,
+    fontVariantLigatures: style.fontVariantLigatures, textTransform: style.textTransform,
+    padding: '0', border: '0', margin: '0',
+  })
+  mirror.append(text, caret)
+  document.body.append(mirror)
+  const textWidth = caret.getBoundingClientRect().left - mirror.getBoundingClientRect().left
+  mirror.remove()
+  const inputRect = input.getBoundingClientRect()
+  const containerRect = input.parentElement?.getBoundingClientRect()
+  const left = containerRect ? inputRect.left - containerRect.left : input.offsetLeft
+  const rawX = left + input.clientLeft + (Number.parseFloat(style.paddingLeft) || 0) + textWidth - input.scrollLeft
+  const minX = left + input.clientLeft + (Number.parseFloat(style.paddingLeft) || 0)
+  const maxX = left + input.clientLeft + input.clientWidth - (Number.parseFloat(style.paddingRight) || 0)
+  return Math.max(minX, Math.min(maxX, rawX))
+}
+
+function getInputCaretIndex(input: HTMLInputElement): number {
+  if (input.selectionStart === input.selectionEnd) return input.selectionStart ?? input.value.length
+  return input.selectionDirection === 'backward'
+    ? input.selectionStart ?? 0
+    : input.selectionEnd ?? input.value.length
+}
+
 // ─── Emojis ───────────────────────────────────────────────────────────────────
 const EMOJIS = [
   '📁',
@@ -176,8 +209,8 @@ const SYSTEM_VIEWS = [
     ),
   },
   {
-    type: 'digest' as const,
-    label: 'Chatbot',
+    type: 'laya' as const,
+    label: 'Laya folders',
     icon: (
       <svg
         width="15"
@@ -226,6 +259,7 @@ export function Sidebar() {
   const {
     feeds,
     groups,
+    layaFolders,
     selection,
     setSelection,
     totalUnread,
@@ -266,6 +300,14 @@ export function Sidebar() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const searchCaretFrameRef = useRef<number | null>(null)
+  const searchCaretTimerRef = useRef<number | null>(null)
+  const searchCaretAnimationIdRef = useRef(0)
+  const [searchCaretTrail, setSearchCaretTrail] = useState<{ left: number; width: number; height: number; id: number; direction: 'left' | 'right' } | null>(null)
+  useEffect(() => () => {
+    if (searchCaretTimerRef.current !== null) window.clearTimeout(searchCaretTimerRef.current)
+    if (searchCaretFrameRef.current !== null) window.cancelAnimationFrame(searchCaretFrameRef.current)
+  }, [])
 
   // Real-time debounced article search
   const lastSearchRef = React.useRef<string | null>(null)
@@ -351,10 +393,10 @@ export function Sidebar() {
     return map
   }, [feeds, groups])
 
-  function selectSystemView(type: SystemView | 'digest') {
+  function selectSystemView(type: SystemView) {
     setSearchQuery('')
-    setSelection({ type: type as SystemView }) // Treat digest as a SystemView effectively
-    if (type !== 'digest' && type !== 'github') {
+    setSelection({ type })
+    if (type !== 'laya' && type !== 'github') {
       void loadArticles({
         unread_only: type === 'unread',
         saved_only: type === 'saved',
@@ -373,6 +415,12 @@ export function Sidebar() {
     setSearchQuery('')
     setSelection({ type: 'group', groupId })
     void loadArticles({ group_id: groupId })
+  }
+
+  function selectLayaFolder(folderId: number) {
+    setSearchQuery('')
+    setSelection({ type: 'laya-folder', layaFolderId: folderId })
+    void loadArticles({ laya_folder_id: folderId })
   }
 
   function handleFeedContextMenu(e: React.MouseEvent, feedId: number) {
@@ -497,11 +545,46 @@ export function Sidebar() {
           </div>
           <input
             type="search"
-            placeholder="Search feeds and articles…"
+            placeholder={'Search… (AND, OR, -, "…", dates)'}
             aria-label="Search feeds and articles"
+            title={'Operators: AND, OR, -word, "exact phrase", (group), "word * word", before:YYYY-MM-DD, after:YYYY-MM-DD, YYYY..YYYY'}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="no-drag"
+            onKeyDown={e => {
+              if (!(e.ctrlKey || e.metaKey) || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+              const input = e.currentTarget
+              const from = getInputCaretIndex(input)
+              if (searchCaretFrameRef.current !== null) window.cancelAnimationFrame(searchCaretFrameRef.current)
+              // Read after the browser's native word jump, before the next paint.
+              // Waiting for keyup delayed the effect until the key was released.
+              searchCaretFrameRef.current = window.requestAnimationFrame(() => {
+                searchCaretFrameRef.current = null
+                if (document.activeElement !== input) return
+                const to = getInputCaretIndex(input)
+                if (to === from) return
+                let start = Math.min(from, to)
+                let end = Math.max(from, to)
+                while (start < end && /\s/.test(input.value[start])) start++
+                while (end > start && /\s/.test(input.value[end - 1])) end--
+                const characters = Array.from(input.value.slice(start, end))
+                const trailLength = Math.max(1, Math.round(characters.length * 0.62))
+                if (!trailLength) return
+                if (to < from) end = start + characters.slice(0, trailLength).join('').length
+                else start = end - characters.slice(-trailLength).join('').length
+                const style = window.getComputedStyle(input)
+                const left = getInputCaretX(input, start)
+                const right = getInputCaretX(input, end)
+                if (right <= left) return
+                if (searchCaretTimerRef.current !== null) window.clearTimeout(searchCaretTimerRef.current)
+                const caretHeight = Number.parseFloat(style.fontSize) || 13
+                setSearchCaretTrail({ left, width: right - left, height: caretHeight * 1.3, id: ++searchCaretAnimationIdRef.current, direction: to < from ? 'left' : 'right' })
+                searchCaretTimerRef.current = window.setTimeout(() => {
+                  setSearchCaretTrail(null)
+                  searchCaretTimerRef.current = null
+                }, 160)
+              })
+            }}
+            className={`no-drag ${styles.searchInput}`}
             style={{
               flex: 1,
               width: '100%',
@@ -525,6 +608,25 @@ export function Sidebar() {
               setTimeout(() => setIsSearchFocused(false), 200)
             }}
           />
+          {searchCaretTrail && (
+            <span
+              key={searchCaretTrail.id}
+              aria-hidden="true"
+              className={styles.searchCaretTrail}
+              onAnimationEnd={() => {
+                if (searchCaretTimerRef.current !== null) window.clearTimeout(searchCaretTimerRef.current)
+                searchCaretTimerRef.current = null
+                setSearchCaretTrail(current => current?.id === searchCaretTrail.id ? null : current)
+              }}
+              style={{
+                left: searchCaretTrail.left,
+                width: searchCaretTrail.width,
+                height: searchCaretTrail.height,
+                top: '50%',
+              }}
+              data-direction={searchCaretTrail.direction}
+            />
+          )}
           {/* Clear button — visible when query is non-empty */}
           {searchQuery && (
             <button
@@ -720,6 +822,26 @@ export function Sidebar() {
         </section>
 
         <div className={styles.divider} />
+
+        {layaFolders.length > 0 && (
+          <section className={styles.section} aria-label="Dossiers Laya">
+            <div className={styles.layaHeading}>Dossiers Laya</div>
+            {layaFolders.map(folder => (
+              <button
+                key={folder.id}
+                className={`${styles.navItem} ${selection.type === 'laya-folder' && selection.layaFolderId === folder.id ? styles.active : ''}`}
+                onClick={() => selectLayaFolder(folder.id)}
+                title={folder.description || folder.name}
+              >
+                <span className={styles.navIcon}>✦</span>
+                <span className={styles.navLabel}>{folder.name}</span>
+                {(folder.article_count ?? 0) > 0 && <span className={styles.badge}>{folder.article_count}</span>}
+              </button>
+            ))}
+          </section>
+        )}
+
+        {layaFolders.length > 0 && <div className={styles.divider} />}
 
         {/* ── Feed groups & feeds ──────────────────────────── */}
         <section className={`${styles.section} ${styles.feedSection}`}>

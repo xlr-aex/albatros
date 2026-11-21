@@ -13,6 +13,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type { FeedService } from '../services/FeedService'
 import type { OpmlService } from '../services/OpmlService'
 import type { Scheduler } from '../sync/Scheduler'
+import { assertSafeExternalHttpUrl } from '../security/ExternalUrlPolicy'
 import fs from 'fs'
 
 export function registerFeedHandlers(
@@ -54,8 +55,7 @@ export function registerFeedHandlers(
     const trimmedUrl = url?.trim()
     if (!trimmedUrl) throw new Error('Feed URL cannot be empty')
 
-    // Validate URL format
-    try { new URL(trimmedUrl) } catch { throw new Error(`Invalid URL: ${trimmedUrl}`) }
+    await assertSafeExternalHttpUrl(trimmedUrl)
 
     const id = feedService.create({ url: trimmedUrl, group_id: groupId })
 
@@ -65,14 +65,26 @@ export function registerFeedHandlers(
     return id
   })
 
-  /** Updates feed properties (title, group, interval). */
-  ipcMain.handle('feeds:update', (_event, id: number, patch: {
+  /** Updates feed properties, validating a changed URL before saving it. */
+  ipcMain.handle('feeds:update', async (_event, id: number, patch: {
+    url?: string
     title?: string
     group_id?: number | null
     fetch_interval_sec?: number
     is_active?: boolean
   }) => {
-    feedService.update(id, patch)
+    const current = feedService.getById(id)
+    if (!current) throw new Error('Feed not found')
+    const update = { ...patch, url: patch.url?.trim(), title: patch.title?.trim(), title_is_custom: patch.title !== undefined ? true : undefined }
+    if (update.title !== undefined && !update.title) throw new Error('Feed name cannot be empty')
+    if (update.url !== undefined) {
+      if (!update.url) throw new Error('Feed URL cannot be empty')
+      await assertSafeExternalHttpUrl(update.url)
+      const existing = feedService.getByUrl(update.url)
+      if (existing && existing.id !== id) throw new Error('This feed URL is already subscribed')
+    }
+    feedService.update(id, update)
+    if (update.url && update.url !== current.url) void scheduler.refreshFeed(id).catch(error => console.error('[Feeds] Refresh after URL change failed:', error))
   })
 
   /** Permanently deletes a feed and all its articles. */

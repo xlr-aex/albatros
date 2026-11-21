@@ -3,7 +3,7 @@
  * @description IPC handlers for article queries and user interaction flags.
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, session } from 'electron'
 import type { ArticleService, ArticleListParams } from '../services/ArticleService'
 import type { SearchService } from '../services/SearchService'
 import type { FeedService } from '../services/FeedService'
@@ -13,6 +13,21 @@ import type { FeedService } from '../services/FeedService'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _redditCache = new Map<string, { data: any; ts: number }>()
 const REDDIT_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const MAX_REDDIT_CACHE_ENTRIES = 100
+
+/**
+ * Comment fetching runs in the main process, so text containing
+ * "reddit.com" is not sufficient proof that the target is Reddit.
+ */
+export function isRedditPostUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    const hostname = url.hostname.toLowerCase()
+    return url.protocol === 'https:' && (hostname === 'reddit.com' || hostname.endsWith('.reddit.com'))
+  } catch {
+    return false
+  }
+}
 
 export function registerArticleHandlers(
   articleService: ArticleService,
@@ -26,11 +41,6 @@ export function registerArticleHandlers(
    */
   ipcMain.handle('articles:list', (_event, params: ArticleListParams) => {
     return articleService.list(params)
-  })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ipcMain.handle('articles:getForDigest', (_event, params: any) => {
-    return articleService.getForDigest(params)
   })
 
   /** Returns the full article including HTML content. */
@@ -67,7 +77,9 @@ export function registerArticleHandlers(
     if (feedId !== undefined) {
       feedService.recountUnread(feedId)
     } else {
-      feedService.getAll().forEach(f => feedService.recountUnread(f.id))
+      // A single database statement scales much better than one recount per
+      // feed for large libraries.
+      feedService.recountAllUnread()
     }
     return affected
   })
@@ -84,9 +96,9 @@ export function registerArticleHandlers(
 
   /** Fetch live Reddit comments via JSON backend proxy — with in-memory cache. */
   ipcMain.handle('articles:get-reddit-comments', async (_event, url: string) => {
-    const empty = { comments: [], selftextHtml: null }
+    const empty = { comments: [], selftextHtml: null, previewUrl: null }
     try {
-      if (!url.includes('reddit.com')) return empty
+      if (!isRedditPostUrl(url)) return empty
 
       // ── Cache hit ─────────────────────────────────────────────────────
       const now = Date.now()
@@ -97,7 +109,10 @@ export function registerArticleHandlers(
 
       // ── Fetch ────────────────────────────────────────────────────────
       const jsonUrl = url.replace(/\/$/, '') + '.json'
-      const res = await fetch(jsonUrl, {
+      // Plain Node requests are often rejected by Reddit and leave us with the
+      // tiny signed RSS thumbnail. The persistent Chromium session already
+      // has Reddit compatibility headers, so it can retrieve the source URL.
+      const res = await session.fromPartition('persist:adblock').fetch(jsonUrl, {
         headers: { 'User-Agent': 'Albatros/1.0.0 (Node.js)' },
         signal: AbortSignal.timeout(12_000), // 12 s hard timeout
       })
@@ -144,13 +159,25 @@ export function registerArticleHandlers(
           .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
       }
 
-      const result = { comments, selftextHtml }
+      // Reddit's RSS exposes a signed 140px thumbnail for external links.
+      // Its JSON payload contains the corresponding source-sized preview.
+      const previewUrl = typeof postData?.preview?.images?.[0]?.source?.url === 'string'
+        ? postData.preview.images[0].source.url.replace(/&amp;/g, '&')
+        : null
+
+      const result = { comments, selftextHtml, previewUrl }
 
       // ── Store in cache ───────────────────────────────────────────────────
       _redditCache.set(url, { data: result, ts: now })
       // Evict entries older than 2× TTL to prevent unbounded growth
       for (const [k, v] of _redditCache) {
         if (now - v.ts > REDDIT_CACHE_TTL * 2) _redditCache.delete(k)
+      }
+      // TTL eviction alone cannot cap a rapid stream of unique URLs.
+      while (_redditCache.size > MAX_REDDIT_CACHE_ENTRIES) {
+        const oldestKey = _redditCache.keys().next().value
+        if (oldestKey === undefined) break
+        _redditCache.delete(oldestKey)
       }
 
       return result

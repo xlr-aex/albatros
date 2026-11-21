@@ -1,0 +1,14 @@
+# Generated dependencies, build outputs and Graphify's own artifacts do not
+# describe Albatros' architecture and must never influence graph metrics.
+node_modules/
+.gradle-android/
+graphify-out*/
+dist/
+dist-electron/
+out/
+release/
+playwright-report/
+test-results/
+scratch/
+**/__pycache__/
+**/*.pyc

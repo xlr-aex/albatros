@@ -113,6 +113,18 @@ describe('FeedParser', () => {
       expect(result.articles[0].thumbnail_url).toBe('https://cdn.example.com/image.jpg')
     })
 
+    it('prefers the largest full-size media image over a Media RSS thumbnail', () => {
+      const rss = `<?xml version="1.0" encoding="UTF-8" ?>
+      <rss version="2.0"><channel><title>Test Feed</title><link>https://example.com</link><item>
+        <title>Article with image variants</title><link>https://example.com/article1</link>
+        <media:thumbnail url="https://cdn.example.com/image-320.jpg" width="320" height="180"/>
+        <media:content url="https://cdn.example.com/image-1920.jpg" medium="image" width="1920" height="1080"/>
+      </item></channel></rss>`
+
+      const result = parseFeed(rss, 'application/rss+xml')
+      expect(result.articles[0].thumbnail_url).toBe('https://cdn.example.com/image-1920.jpg')
+    })
+
     it('extracts thumbnail from first img in HTML content for RSS', () => {
       const rss = `<?xml version="1.0" encoding="UTF-8" ?>
       <rss version="2.0">
@@ -129,6 +141,17 @@ describe('FeedParser', () => {
 
       const result = parseFeed(rss, 'application/rss+xml')
       expect(result.articles[0].thumbnail_url).toBe('https://example.com/images/pic.jpg')
+    })
+
+    it('chooses the largest srcset candidate for an inline image', () => {
+      const rss = `<?xml version="1.0" encoding="UTF-8" ?>
+      <rss version="2.0"><channel><title>Test Feed</title><link>https://example.com</link><item>
+        <title>Article with responsive image</title><link>https://example.com/article1</link>
+        <description><![CDATA[<img src="https://example.com/images/pic-320.jpg" srcset="https://example.com/images/pic-640.jpg 640w, https://example.com/images/pic-1600.jpg 1600w"/>]]></description>
+      </item></channel></rss>`
+
+      const result = parseFeed(rss, 'application/rss+xml')
+      expect(result.articles[0].thumbnail_url).toBe('https://example.com/images/pic-1600.jpg')
     })
 
     it('resolves relative thumbnail URLs in RSS', () => {

@@ -59,6 +59,7 @@ export interface UpdateFeedInput {
   fetch_interval_sec?: number
   favicon_url?: string
   is_active?: boolean
+  title_is_custom?: boolean
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -192,17 +193,29 @@ export class FeedService {
     const sets: string[] = []
     const params: unknown[] = []
 
-    if (patch.url               !== undefined) { sets.push('url = ?');                params.push(patch.url) }
+    if (patch.url               !== undefined) {
+      sets.push('url = ?', 'last_etag = NULL', 'last_modified = NULL', 'error_count = 0', "next_fetch_at = strftime('%s','now')")
+      params.push(patch.url)
+    }
     if (patch.title             !== undefined) { sets.push('title = ?');              params.push(patch.title) }
     if (patch.site_url          !== undefined) { sets.push('site_url = ?');           params.push(patch.site_url) }
     if (patch.group_id          !== undefined) { sets.push('group_id = ?');           params.push(patch.group_id) }
     if (patch.fetch_interval_sec !== undefined) { sets.push('fetch_interval_sec = ?'); params.push(patch.fetch_interval_sec) }
     if (patch.favicon_url       !== undefined) { sets.push('favicon_url = ?');        params.push(patch.favicon_url) }
     if (patch.is_active         !== undefined) { sets.push('is_active = ?');          params.push(patch.is_active ? 1 : 0) }
+    if (patch.title_is_custom   !== undefined) { sets.push('title_is_custom = ?');    params.push(patch.title_is_custom ? 1 : 0) }
 
     if (sets.length === 0) return
     params.push(id)
     this.db.prepare(`UPDATE feeds SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+  }
+
+  /** Apply provider metadata without overwriting a user-defined title. */
+  updateFromSync(id: number, patch: { title?: string; site_url?: string; favicon_url?: string }, skipPersist = false): void {
+    if (patch.title !== undefined) {
+      this.db.prepare('UPDATE feeds SET title = ? WHERE id = ? AND title_is_custom = 0').run(patch.title, id)
+    }
+    this.update(id, { site_url: patch.site_url, favicon_url: patch.favicon_url }, skipPersist)
   }
 
   /** Reschedules a provider-throttled feed without treating it as broken. */

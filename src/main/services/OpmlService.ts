@@ -13,6 +13,7 @@
 
 import { XMLParser, XMLBuilder } from 'fast-xml-parser'
 import type { FeedService } from './FeedService'
+import { parseExternalHttpUrl } from '../security/ExternalUrlPolicy'
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ export class OpmlService {
     let imported = 0
     for (const feed of feeds) {
       if (!feed.xmlUrl) continue
+      parseExternalHttpUrl(feed.xmlUrl)
 
       // Create feed group if a category was detected
       let groupId: number | undefined

@@ -76,6 +76,117 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_articles_summary_pub ON articles (summary, published_at DESC, id DESC);
     `,
   },
+  {
+    version: 7,
+    name: 'add_laya_folders',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folders (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT    NOT NULL,
+        description TEXT    NOT NULL DEFAULT '',
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+      ALTER TABLE articles ADD COLUMN laya_folder_id INTEGER DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_articles_laya_folder ON articles (laya_folder_id, published_at DESC, id DESC);
+    `,
+  },
+  {
+    version: 8,
+    name: 'add_laya_scope_controls',
+    sql: `
+      ALTER TABLE laya_folders ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1;
+      CREATE TABLE IF NOT EXISTS laya_feed_scopes (
+        feed_id INTEGER PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+    `,
+  },
+  {
+    version: 9,
+    name: 'make_laya_feed_scopes_per_folder',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folder_feed_scopes (
+        folder_id INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        feed_id   INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+        enabled   INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (folder_id, feed_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_folder_feed_scopes_feed
+        ON laya_folder_feed_scopes (feed_id, enabled);
+      -- Preserve the user's existing global selection for every current folder.
+      INSERT OR IGNORE INTO laya_folder_feed_scopes (folder_id, feed_id, enabled)
+      SELECT folders.id, feeds.id, COALESCE(scopes.enabled, 1)
+      FROM laya_folders AS folders
+      CROSS JOIN feeds
+      LEFT JOIN laya_feed_scopes AS scopes ON scopes.feed_id = feeds.id;
+    `,
+  },
+  {
+    version: 10,
+    name: 'make_laya_scopes_feed_groups',
+    sql: `
+      CREATE TABLE IF NOT EXISTS laya_folder_group_scopes (
+        folder_id INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        group_id  INTEGER NOT NULL REFERENCES feed_groups(id) ON DELETE CASCADE,
+        enabled   INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (folder_id, group_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_folder_group_scopes_group
+        ON laya_folder_group_scopes (group_id, enabled);
+      -- A group remains selected when at least one of its feeds was selected
+      -- in the previous per-feed configuration.
+      INSERT OR IGNORE INTO laya_folder_group_scopes (folder_id, group_id, enabled)
+      SELECT folders.id, groups.id,
+             CASE WHEN MAX(COALESCE(scopes.enabled, 0)) = 1 THEN 1 ELSE 0 END
+      FROM laya_folders AS folders
+      CROSS JOIN feed_groups AS groups
+      JOIN feeds ON feeds.group_id = groups.id
+      LEFT JOIN laya_folder_feed_scopes AS scopes
+        ON scopes.folder_id = folders.id AND scopes.feed_id = feeds.id
+      GROUP BY folders.id, groups.id;
+    `,
+  },
+  {
+    version: 11,
+    name: 'add_laya_article_memberships',
+    sql: `
+      -- An article may belong to several Laya folders. Keep the legacy
+      -- articles.laya_folder_id column during the transition, but do not use
+      -- it for new reads or classifications.
+      CREATE TABLE IF NOT EXISTS article_laya_memberships (
+        article_id    INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        folder_id     INTEGER NOT NULL REFERENCES laya_folders(id) ON DELETE CASCADE,
+        score         REAL,
+        decision      TEXT NOT NULL CHECK (decision IN ('include', 'exclude', 'uncertain')),
+        model_version TEXT,
+        classified_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        run_id        TEXT,
+        evidence      TEXT,
+        PRIMARY KEY (article_id, folder_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_laya_memberships_folder_decision_article
+        ON article_laya_memberships (folder_id, decision, article_id);
+      CREATE INDEX IF NOT EXISTS idx_laya_memberships_article
+        ON article_laya_memberships (article_id);
+
+      -- Preserve existing positive decisions. The old -1 sentinel meant only
+      -- "not assigned to any single winner" and contains no per-folder answer,
+      -- so it is intentionally re-evaluated instead of being guessed here.
+      INSERT OR IGNORE INTO article_laya_memberships
+        (article_id, folder_id, score, decision, model_version, evidence)
+      SELECT articles.id, articles.laya_folder_id, NULL, 'include', 'legacy-single-folder',
+             'Migrated from the legacy single-folder assignment.'
+      FROM articles
+      JOIN laya_folders ON laya_folders.id = articles.laya_folder_id
+      WHERE articles.laya_folder_id > 0;
+    `,
+  },
+  {
+    version: 12,
+    name: 'preserve_custom_feed_titles',
+    sql: `ALTER TABLE feeds ADD COLUMN title_is_custom INTEGER NOT NULL DEFAULT 0;`,
+  },
 ]
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

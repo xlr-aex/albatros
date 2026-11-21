@@ -12,6 +12,7 @@ import { useFeedStore } from './feedStore'
 export interface ArticleSummary {
   id: number
   feed_id: number
+  url: string | null
   feed_title: string | null
   feed_favicon: string | null
   title: string | null
@@ -56,6 +57,7 @@ interface ArticleStore {
     unread_only?: boolean
     saved_only?: boolean
     today_only?: boolean
+    laya_folder_id?: number
     searchQuery?: string
   }, silent?: boolean) => Promise<void>
 

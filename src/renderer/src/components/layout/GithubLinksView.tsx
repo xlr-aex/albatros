@@ -201,7 +201,7 @@ export function GithubLinksView() {
                   className={styles.card}
                   onClick={e => {
                     e.preventDefault()
-                    window.open(link.url, '_blank')
+                    void window.api.browser.open(link.url)
                   }}
                 >
                   {showImage && (

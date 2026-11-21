@@ -177,15 +177,15 @@ function extractRssThumbnail(
   html: string | null,
   siteUrl: string | null,
 ): string | null {
-  const mediaThumb = item['media:thumbnail'] as Record<string, string> | undefined
-  if (mediaThumb?.['@_url']) return resolveUrl(mediaThumb['@_url'], siteUrl)
-
   const mediaContent = asArray(item['media:content']) as Record<string, string>[]
-  for (const mc of mediaContent) {
-    if (mc?.['@_url'] && (mc?.['@_medium'] === 'image' || mc?.['@_type']?.startsWith('image/'))) {
-      return resolveUrl(mc['@_url'], siteUrl)
-    }
-  }
+  const fullImage = bestMediaImage(mediaContent, siteUrl, true)
+  if (fullImage) return fullImage
+
+  // A thumbnail is intentionally the fallback: many feeds ship a tiny
+  // 120–300px `media:thumbnail` alongside a full-size `media:content`.
+  const mediaThumb = asArray(item['media:thumbnail']) as Record<string, string>[]
+  const thumbnail = bestMediaImage(mediaThumb, siteUrl, false)
+  if (thumbnail) return thumbnail
 
   if (html) return getFirstImageFromHtml(html, siteUrl)
 
@@ -315,10 +315,19 @@ function extractAtomThumbnail(
   siteUrl: string | null,
 ): string | null {
   const mediaGroup = entry['media:group'] as Record<string, unknown> | undefined
-  const mediaThumb = (entry['media:thumbnail'] ?? mediaGroup?.['media:thumbnail']) as
-    | Record<string, string>
-    | undefined
-  if (mediaThumb?.['@_url']) return resolveUrl(mediaThumb['@_url'], siteUrl)
+  const mediaContent = [
+    ...asArray(entry['media:content']),
+    ...asArray(mediaGroup?.['media:content']),
+  ] as Record<string, string>[]
+  const fullImage = bestMediaImage(mediaContent, siteUrl, true)
+  if (fullImage) return fullImage
+
+  const mediaThumb = [
+    ...asArray(entry['media:thumbnail']),
+    ...asArray(mediaGroup?.['media:thumbnail']),
+  ] as Record<string, string>[]
+  const thumbnail = bestMediaImage(mediaThumb, siteUrl, false)
+  if (thumbnail) return thumbnail
 
   const ytVideoId = findYoutubeVideoId(entry)
   if (ytVideoId) return `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg`
@@ -465,14 +474,72 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length
 }
 
-/** Extracts the src of the first <img> tag from an HTML string. */
+/** Returns the largest valid image URL advertised by Media RSS elements. */
+function bestMediaImage(
+  entries: Record<string, string>[],
+  siteUrl: string | null,
+  requireImageType: boolean,
+): string | null {
+  const candidates = entries
+    .filter((entry) => {
+      if (!entry?.['@_url']) return false
+      return !requireImageType || entry['@_medium'] === 'image' || entry['@_type']?.startsWith('image/')
+    })
+    .sort((left, right) => mediaImageArea(right) - mediaImageArea(left))
+
+  for (const candidate of candidates) {
+    const url = normalizeImageUrl(candidate['@_url'], siteUrl)
+    if (url) return url
+  }
+  return null
+}
+
+function mediaImageArea(entry: Record<string, string>): number {
+  const width = Number(entry['@_width'])
+  const height = Number(entry['@_height'])
+  return Number.isFinite(width) && Number.isFinite(height) ? width * height : 0
+}
+
+/** Extracts the best available source from the first <img> tag in HTML. */
 function getFirstImageFromHtml(html: string, siteUrl: string | null = null): string | null {
-  const match = /<img[^>]+src=["']([^"'>]+)["']/i.exec(html)
-  if (!match) return null
+  const imageTag = /<img\b[^>]*>/i.exec(html)?.[0]
+  if (!imageTag) return null
 
-  let src = match[1]
+  const attribute = (name: string): string | null => {
+    const match = new RegExp(`(?:^|\\s)${name}\\s*=\\s*["']([^"']+)["']`, 'i').exec(imageTag)
+    return match?.[1] ?? null
+  }
+
+  const srcset = attribute('srcset')
+  const srcsetCandidates = srcset
+    ? srcset.split(',')
+      .map((source) => {
+        const [url, descriptor = '0w'] = source.trim().split(/\s+/, 2)
+        return { url, width: Number.parseInt(descriptor, 10) || 0 }
+      })
+      .sort((left, right) => right.width - left.width)
+      .map(({ url }) => url)
+    : []
+
+  // Modern publishers often place a small placeholder in src and the actual
+  // asset in one of these attributes. Use the largest srcset candidate first.
+  const candidates = [
+    ...srcsetCandidates,
+    attribute('data-original'),
+    attribute('data-lazy-src'),
+    attribute('data-src'),
+    attribute('src'),
+  ]
+
+  for (const candidate of candidates) {
+    const url = candidate ? normalizeImageUrl(candidate, siteUrl) : null
+    if (url) return url
+  }
+  return null
+}
+
+function normalizeImageUrl(src: string, siteUrl: string | null): string | null {
   if (!src || src.startsWith('data:') || src.startsWith('//')) return null
-
   return resolveUrl(src, siteUrl)
 }
 

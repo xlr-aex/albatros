@@ -8,6 +8,7 @@
 
 import type { Database } from 'better-sqlite3'
 import type { ArticleSummary } from './ArticleService'
+import { parseSearchQuery } from './SearchQuery'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,15 +35,14 @@ export class SearchService {
     const trimmed = query.trim()
     if (!trimmed) return []
 
-    // Map strict prefixes for FTS text indexing.
-    // Stripping unbalanced quotes and weird FTS symbols to prevent crashes.
-    // Bare prefix terms are used because FTS4 ignores a trailing * on a quoted term.
-    const safeQuery = trimmed.replace(/["*()]/g, '')
-    const words = safeQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`)
-    if (!words.length) return []
-
-    const matchQuery = words.join(' ')
-    const likeQuery = `%${safeQuery.replace(/[%_\\]/g, '\\$&')}%`
+    const parsed = parseSearchQuery(trimmed)
+    if (!parsed.match && parsed.publishedAfter === null && parsed.publishedBefore === null) return []
+    const where = ["(a.enclosure_type IS NULL OR a.enclosure_type != 'reddit-comment')"]
+    const bindings: (string | number)[] = []
+    if (parsed.match) { where.push('articles_fts MATCH ?'); bindings.push(parsed.match) }
+    if (parsed.publishedAfter !== null) { where.push('a.published_at >= ?'); bindings.push(parsed.publishedAfter) }
+    if (parsed.publishedBefore !== null) { where.push('a.published_at < ?'); bindings.push(parsed.publishedBefore) }
+    const likeQuery = `%${trimmed.replace(/[%_\\]/g, '\\$&')}%`
 
     try {
       const stmt = this.db.prepare(`
@@ -50,7 +50,7 @@ export class SearchService {
           a.id, a.feed_id,
           f.title      AS feed_title,
           f.favicon_url AS feed_favicon,
-           a.title, a.author, a.excerpt, a.thumbnail_url,
+          a.url, a.title, a.author, a.excerpt, a.thumbnail_url,
           a.published_at, a.is_read, a.is_starred, a.is_saved,
           snippet(articles_fts, '[[[', ']]]', '…', 1, 15) AS snippet,
           (CASE WHEN a.title LIKE ? ESCAPE '\\' OR a.excerpt LIKE ? ESCAPE '\\' THEN -1 ELSE 1 END) AS exact_match,
@@ -58,13 +58,13 @@ export class SearchService {
         FROM articles_fts fts
         JOIN articles a ON a.id = fts.rowid
         JOIN feeds    f ON f.id = a.feed_id
-        WHERE articles_fts MATCH ?
+        WHERE ${where.join(' AND ')}
 
         ORDER BY exact_match ASC, rank ASC, published_at DESC
         LIMIT ?
       `)
 
-      const rows = stmt.all(likeQuery, likeQuery, matchQuery, limit) as Record<string, unknown>[]
+      const rows = stmt.all(likeQuery, likeQuery, ...bindings, limit) as Record<string, unknown>[]
 
       return rows.map(row => {
         const rawSnippet = String(row.snippet ?? '')
@@ -73,6 +73,7 @@ export class SearchService {
            feed_id: Number(row.feed_id || 0),
            feed_title: row.feed_title ? String(row.feed_title) : null,
            feed_favicon: row.feed_favicon ? String(row.feed_favicon) : null,
+           url: row.url ? String(row.url) : null,
            title: row.title ? String(row.title) : null,
            author: row.author ? String(row.author) : null,
            excerpt: row.excerpt ? String(row.excerpt) : null,

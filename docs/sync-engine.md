@@ -18,6 +18,8 @@ The synchronisation stack runs entirely in the Electron main process. Its job is
 
 Ordinary feeds use the main process `fetch`. Reddit URLs use `session.fromPartition('persist:adblock').fetch()`. That persistent Chromium session shares browser networking behaviour and cookies with the embedded reader and avoids the severe rate limiting seen with anonymous Node requests.
 
+Public YouTube channel pages are fetched through the main process and parsed from their public video listing. The channel-page fetch validates each redirect. A consent or anti-bot page produces a visible sync error; opening the channel in the embedded browser and retrying may help. Publisher metadata updates preserve feed names edited by the user.
+
 The private-host check is intentionally described as lightweight: it rejects obvious literal hosts but does not perform a DNS resolution audit for every redirect.
 
 ### `FeedParser.ts`

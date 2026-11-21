@@ -10,7 +10,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { ArticleList } from './components/layout/ArticleList'
 import { ArticleReader } from './components/layout/ArticleReader'
 import { GithubLinksView } from './components/layout/GithubLinksView'
-import { AiDigestView } from './components/layout/AiDigestView'
+import { LayaFolderView } from './components/layout/LayaFolderView'
 import { useFeedStore } from './store/feedStore'
 import { useArticleStore } from './store/articleStore'
 import { useUiStore, subscribeSyncEvents } from './store/uiStore'
@@ -18,12 +18,18 @@ import { applyAccentColor } from './utils/theme'
 import styles from './App.module.css'
 
 export default function App() {
-  const { loadFeeds, refreshUnreadCount, selection } = useFeedStore()
+  const { loadFeeds, refreshUnreadCount, selection, loadLayaFolders, setLayaFolders } = useFeedStore()
   const { loadArticles } = useArticleStore()
   const { theme, setTheme } = useUiStore()
 
   // ── Initial load & subscriptions ──────────────────────────────────────────
   useEffect(() => {
+    // Recover from a resize gesture interrupted by a window blur. Older builds
+    // left this on `none`, which made every control feel frozen.
+    document.body.style.pointerEvents = ''
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+
     // 1. Load initial settings (Theme, Layout Widths, Font Size)
     window.api.settings.getAll().then((settings) => {
       if (settings.theme) setTheme(settings.theme as 'light' | 'dark')
@@ -44,57 +50,67 @@ export default function App() {
       }
     })
 
-    // 2. Load feeds and selection
+    // 2. Load feeds, selection and Laya folders
     void loadFeeds().then(() => {
       // Load all articles by default
       void loadArticles({})
     })
+    void loadLayaFolders()
 
     // 3. Subscribe to real-time sync events from the main process
     const unsub = subscribeSyncEvents()
 
-    // 4. Periodically refresh total unread (fallback for drift)
+    // 4. Subscribe to Laya folder push events
+    const unsubLayaFolders = window.api.laya.onFolders((folders) => {
+      setLayaFolders(folders as import('./store/feedStore').LayaFolder[])
+    })
+
+    // 5. Periodically refresh total unread (fallback for drift)
     const interval = setInterval(() => {
       void refreshUnreadCount()
     }, 60_000)
 
     return () => {
       unsub()
+      unsubLayaFolders()
       clearInterval(interval)
     }
-  }, [loadFeeds, loadArticles, refreshUnreadCount, setTheme])
+  }, [loadFeeds, loadArticles, refreshUnreadCount, setTheme, loadLayaFolders, setLayaFolders])
 
   // ── Drag Resizer Handlers ───────────────────────────────────────────────
   const startSidebarResize = (e: React.MouseEvent) => {
     e.preventDefault()
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-    document.body.style.pointerEvents = 'none'
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const newWidth = Math.max(200, Math.min(moveEvent.clientX, 600))
       document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`)
     }
 
-    const onMouseUp = (upEvent: MouseEvent) => {
+    const finishResize = (upEvent?: MouseEvent) => {
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      document.body.style.pointerEvents = ''
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
-      const finalWidth = Math.max(200, Math.min(upEvent.clientX, 600))
-      window.api.settings.set('sidebar_width', finalWidth.toString())
+      window.removeEventListener('blur', onWindowBlur)
+      if (upEvent) {
+        const finalWidth = Math.max(200, Math.min(upEvent.clientX, 600))
+        window.api.settings.set('sidebar_width', finalWidth.toString())
+      }
     }
+    const onMouseUp = (upEvent: MouseEvent) => finishResize(upEvent)
+    const onWindowBlur = () => finishResize()
 
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('blur', onWindowBlur, { once: true })
   }
 
   const startArticleListResize = (e: React.MouseEvent) => {
     e.preventDefault()
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-    document.body.style.pointerEvents = 'none'
 
     // The mouse clientX represents SidebarWidth + ArticleListWidth.
     // Calculate the ArticleList width by subtracting the Sidebar width
@@ -106,18 +122,23 @@ export default function App() {
       document.documentElement.style.setProperty('--article-list-width', `${newWidth}px`)
     }
 
-    const onMouseUp = (upEvent: MouseEvent) => {
+    const finishResize = (upEvent?: MouseEvent) => {
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      document.body.style.pointerEvents = ''
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
-      const finalWidth = Math.max(250, Math.min(upEvent.clientX - sidebarWidth, 800))
-      window.api.settings.set('article_list_width', finalWidth.toString())
+      window.removeEventListener('blur', onWindowBlur)
+      if (upEvent) {
+        const finalWidth = Math.max(250, Math.min(upEvent.clientX - sidebarWidth, 800))
+        window.api.settings.set('article_list_width', finalWidth.toString())
+      }
     }
+    const onMouseUp = (upEvent: MouseEvent) => finishResize(upEvent)
+    const onWindowBlur = () => finishResize()
 
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('blur', onWindowBlur, { once: true })
   }
 
   return (
@@ -129,8 +150,8 @@ export default function App() {
       
       {selection.type === 'github' ? (
         <GithubLinksView />
-      ) : selection.type === 'digest' ? (
-        <AiDigestView />
+      ) : selection.type === 'laya' ? (
+        <LayaFolderView />
       ) : (
         <>
           <ArticleList />

@@ -87,22 +87,6 @@ When reporting a bug, include the feed URL and one article URL—not ten samples
 
 Restart the app after media changes so the renderer bundle updates. Albatros needs the post's Reddit JSON metadata to locate the HLS playlist. If metadata cannot load, it shows a poster/browser fallback. Verify that `hls.js` is installed and the production build contains an HLS chunk.
 
-## Local AI does not connect
-
-### Ollama
-
-- Confirm `http://127.0.0.1:11434/api/tags` responds.
-- Verify the configured model is installed.
-- Use the base URL without `/api` at the end.
-
-### LM Studio
-
-- Start the local server, not only the desktop UI.
-- Confirm `/v1/models` responds on the configured port.
-- Use the base URL with or without `/v1`; Albatros normalises the chat-completions path.
-
-The background summariser waits after failures so an offline model does not create a tight retry loop.
-
 ## Database backup or corruption concerns
 
 Close Albatros before copying `albatros.db`, because WAL mode may have an active `-wal` file. Preserve the original file before attempting recovery. OPML export can restore subscriptions but not article state.

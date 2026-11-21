@@ -20,6 +20,8 @@ import type { Database } from 'better-sqlite3'
 import pLimit from 'p-limit'
 import { FeedHttpError, fetchFeed, type FetchFeedResult } from './HttpClient'
 import { parseFeed } from './FeedParser'
+import type { ParseResult } from './FeedParser'
+import { fetchYouTubeChannel, isYouTubeChannelUrl } from './YouTubeChannel'
 import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
 import { persistDatabase } from '../db/connection'
@@ -237,14 +239,21 @@ export class SyncEngine {
         await this.waitForProvider(feed.url)
         let effectiveUrl = feed.url
         let response: FetchFeedResult
+        let youtubeParsed: ParseResult | null = null
         try {
-          response = await fetchFeed(
-            effectiveUrl,
-            useCache ? feed.last_etag : null,
-            useCache ? feed.last_modified : null,
-          )
+          if (isYouTubeChannelUrl(effectiveUrl)) {
+            youtubeParsed = await fetchYouTubeChannel(effectiveUrl)
+            response = { status: 200, body: '', etag: null, lastModified: null, contentType: null }
+          } else {
+            response = await fetchFeed(
+              effectiveUrl,
+              useCache ? feed.last_etag : null,
+              useCache ? feed.last_modified : null,
+            )
+          }
         } catch (err) {
           if (!(err instanceof FeedHttpError) || err.status !== 404) throw err
+          if (isYouTubeChannelUrl(feed.url)) throw err
 
           const recovered = await this.tryFeedAlternatives(feed.url)
           if (!recovered) throw err
@@ -276,7 +285,7 @@ export class SyncEngine {
         }
 
         // ── Parse ──────────────────────────────────────────────────────────
-        let parsed = parseFeed(response.body, response.contentType)
+        let parsed = youtubeParsed ?? parseFeed(response.body, response.contentType)
 
         // ── Fallback RSS <-> ATOM for incomplete scraping ──────────────────
         const isContentMissing =
@@ -319,7 +328,7 @@ export class SyncEngine {
         // Update feed metadata from parsed feed info
         const faviconUrl = getFaviconUrl(parsed.meta.site_url, effectiveUrl, parsed.meta.icon_url)
         if (parsed.meta.title || parsed.meta.site_url || faviconUrl !== feed.favicon_url) {
-          this.feedService.update(
+          this.feedService.updateFromSync(
             feed.id,
             {
               title: parsed.meta.title ?? undefined,
@@ -381,6 +390,10 @@ export class SyncEngine {
           }
           return this.deferRateLimitedFeed(feed, logId, skipPersist, retryAfterMs)
         }
+        // Retrying cannot make an oversized response smaller. In particular,
+        // avoid downloading a multi-megabyte feed three times in one scheduler
+        // tick, which creates needless memory pressure.
+        if (lastError.message.startsWith('Feed body exceeds size limit')) break
         // Network/HTTP error: retry up to MAX_ATTEMPTS
         if (attempt < MAX_ATTEMPTS) {
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
@@ -455,6 +468,11 @@ export class SyncEngine {
   private async tryFeedAlternatives(feedUrl: string): Promise<{ url: string; response: FetchFeedResult } | null> {
     let parsed: URL
     try { parsed = new URL(feedUrl) } catch { return null }
+
+    // A YouTube Atom URL is not a conventional blog endpoint. Falling back to
+    // /feed/ fetches YouTube's HTML home page (HTTP 200), which then becomes a
+    // misleading "0 articles" parsing error and can never recover the feed.
+    if (/(^|\.)youtube\.com$/i.test(parsed.hostname) && parsed.pathname === '/feeds/videos.xml') return null
 
     const paths = new Set<string>()
     const cleanPath = parsed.pathname.replace(/\/+$/, '')
@@ -571,8 +589,12 @@ export class SyncEngine {
   }): void {
     const windows = BrowserWindow?.getAllWindows?.() ?? []
     for (const win of windows) {
-      if (!win.isDestroyed()) {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        try {
         win.webContents.send('sync:update', payload)
+        } catch {
+          // The renderer may disappear while a background sync finishes.
+        }
       }
     }
   }
