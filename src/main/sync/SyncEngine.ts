@@ -22,6 +22,7 @@ import { FeedHttpError, fetchFeed, type FetchFeedResult } from './HttpClient'
 import { parseFeed } from './FeedParser'
 import type { ParseResult } from './FeedParser'
 import { fetchYouTubeChannel, isYouTubeChannelUrl } from './YouTubeChannel'
+import { normalizeRedditFeedUrl } from './RedditFeedUrl'
 import type { FeedService, Feed } from '../services/FeedService'
 import type { ArticleService } from '../services/ArticleService'
 import { persistDatabase } from '../db/connection'
@@ -237,7 +238,7 @@ export class SyncEngine {
         // This resolves cases where buggy servers return empty 200/304 incorrectly.
         const useCache = attempt < MAX_ATTEMPTS
         await this.waitForProvider(feed.url)
-        let effectiveUrl = feed.url
+        let effectiveUrl = normalizeRedditFeedUrl(feed.url)
         let response: FetchFeedResult
         let youtubeParsed: ParseResult | null = null
         try {
@@ -323,6 +324,10 @@ export class SyncEngine {
             // After 3 attempts (including a forced fresh one), it is truly empty
             throw new Error('Feed has 0 articles (even after forced reload)')
           }
+        }
+
+        if (effectiveUrl !== feed.url && !this.feedService.getByUrl(effectiveUrl)) {
+          this.feedService.update(feed.id, { url: effectiveUrl }, skipPersist)
         }
 
         // Update feed metadata from parsed feed info

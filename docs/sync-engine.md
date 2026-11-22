@@ -20,6 +20,8 @@ Ordinary feeds use `fetch` in the main process. Reddit URLs use `session.fromPar
 
 The main process downloads public YouTube channel pages and reads their video list. It checks each redirect. If YouTube returns a consent or anti-bot page, Albatros shows a sync error. Open the channel in the built-in browser, then try again. A sync does not replace a feed name that the user edited.
 
+When a feed URL is a subreddit page such as `https://www.reddit.com/r/homeautomation/`, Albatros requests its `.rss` Atom endpoint. After a successful sync, it saves the feed URL. This also repairs older subscriptions that stored the page URL.
+
 The private-host check blocks known local and private addresses. Check `ExternalUrlPolicy` before you change the redirect rules.
 
 ### `FeedParser.ts`

@@ -14,6 +14,7 @@ import type { FeedService } from '../services/FeedService'
 import type { OpmlService } from '../services/OpmlService'
 import type { Scheduler } from '../sync/Scheduler'
 import { assertSafeExternalHttpUrl } from '../security/ExternalUrlPolicy'
+import { normalizeRedditFeedUrl } from '../sync/RedditFeedUrl'
 import fs from 'fs'
 
 export function registerFeedHandlers(
@@ -57,7 +58,7 @@ export function registerFeedHandlers(
 
     await assertSafeExternalHttpUrl(trimmedUrl)
 
-    const id = feedService.create({ url: trimmedUrl, group_id: groupId })
+    const id = feedService.create({ url: normalizeRedditFeedUrl(trimmedUrl), group_id: groupId })
 
     // Trigger an immediate sync so the user gets articles right away
     void scheduler.refreshFeed(id)
@@ -75,7 +76,7 @@ export function registerFeedHandlers(
   }) => {
     const current = feedService.getById(id)
     if (!current) throw new Error('Feed not found')
-    const update = { ...patch, url: patch.url?.trim(), title: patch.title?.trim(), title_is_custom: patch.title !== undefined ? true : undefined }
+    const update = { ...patch, url: patch.url ? normalizeRedditFeedUrl(patch.url.trim()) : patch.url?.trim(), title: patch.title?.trim(), title_is_custom: patch.title !== undefined ? true : undefined }
     if (update.title !== undefined && !update.title) throw new Error('Feed name cannot be empty')
     if (update.url !== undefined) {
       if (!update.url) throw new Error('Feed URL cannot be empty')
