@@ -260,11 +260,6 @@ export class SyncEngine {
           if (!recovered) throw err
           effectiveUrl = recovered.url
           response = recovered.response
-
-          const existing = this.feedService.getByUrl(effectiveUrl)
-          if (!existing || existing.id === feed.id) {
-            this.feedService.update(feed.id, { url: effectiveUrl }, skipPersist)
-          }
         }
 
         // ── 304 Not Modified ───────────────────────────────────────────────
@@ -474,10 +469,10 @@ export class SyncEngine {
     let parsed: URL
     try { parsed = new URL(feedUrl) } catch { return null }
 
-    // A YouTube Atom URL is not a conventional blog endpoint. Falling back to
-    // /feed/ fetches YouTube's HTML home page (HTTP 200), which then becomes a
-    // misleading "0 articles" parsing error and can never recover the feed.
-    if (/(^|\.)youtube\.com$/i.test(parsed.hostname) && parsed.pathname === '/feeds/videos.xml') return null
+    // Reddit and YouTube do not use WordPress-style /feed/ endpoints. A 200
+    // response from those pages does not prove that they contain feed entries.
+    if (/(^|\.)reddit\.com$/i.test(parsed.hostname) ||
+        (/(^|\.)youtube\.com$/i.test(parsed.hostname) && parsed.pathname === '/feeds/videos.xml')) return null
 
     const paths = new Set<string>()
     const cleanPath = parsed.pathname.replace(/\/+$/, '')
