@@ -30,7 +30,10 @@
 
 ---
 
-Albatros stores your feeds, downloaded articles, and reading state on your computer. Use the three-pane interface to read feeds, including Reddit and public YouTube channels. Laya folders sort posts on your computer. You do not need an account or an Albatros server.
+Albatros stores your feeds, downloaded articles, and reading state on your computer. Use the three-pane interface to read feeds and public YouTube channels. You can still read Reddit posts already stored in your database. Laya folders sort posts on your computer. You do not need an account or an Albatros server.
+
+> [!NOTE]
+> Reddit ended RSS feed support on November 13, 2026. Existing Reddit posts remain in your local database, but new Reddit posts may no longer sync. See [Reddit feed troubleshooting](docs/troubleshooting.md#reddit-feeds-show-http-429-or-remain-empty).
 
 ## Features
 
@@ -45,7 +48,7 @@ Albatros stores your feeds, downloaded articles, and reading state on your compu
 
 | Sync | Local classification |
 |---|---|
-| RSS, Atom, JSON Feed, Reddit and YouTube channels | Local SQLite database |
+| RSS, Atom, JSON Feed and YouTube channels | Local SQLite database |
 | Adaptive scheduling and HTTP caching | No telemetry |
 | Rate-limit-aware Reddit queue | No Albatros cloud service |
 | OPML import and export | Laya folders and on-device sorting |

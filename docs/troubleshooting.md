@@ -60,9 +60,11 @@ Reddit serves a JavaScript anti-bot challenge; the embedded webview normally sol
 
 ## Reddit feeds show HTTP 429 or remain empty
 
+Reddit ended RSS feed support on November 13, 2026. Reddit can now return HTTP 429 or 404 for subreddit `.rss` URLs. This is a provider change. Repeated manual refreshes will not restore the feed. Albatros keeps posts already stored in its database. Reddit says there is no replacement for RSS feeds outside communities that you moderate.
+
 A subreddit page URL must use the Atom endpoint, for example `https://www.reddit.com/r/homeautomation/.rss`. Albatros converts page URLs when you add a feed and repairs older subscriptions after a successful sync.
 
-Albatros uses the persistent Chromium session for Reddit RSS and honours provider cooldowns. If 429 persists:
+Albatros uses the persistent Chromium session for Reddit RSS and honours provider cooldowns. If you must diagnose a 429 response:
 
 1. stop clicking Sync and wait for the cooldown;
 2. verify Reddit opens in the embedded/external browser on the same network;

@@ -18,6 +18,8 @@ The sync code runs in the Electron main process. It downloads feeds without bloc
 
 Ordinary feeds use `fetch` in the main process. Reddit URLs use `session.fromPartition('persist:adblock').fetch()`. This Chromium session shares cookies with the built-in browser. It also reduces the rate limits that affect anonymous Node requests.
 
+Reddit ended RSS feed support on November 13, 2026. The Reddit-specific queue remains for existing subscriptions and cached posts. It cannot guarantee new Reddit posts. Reddit can return HTTP 429 or 404 even when the URL is valid.
+
 The main process downloads public YouTube channel pages and reads their video list. It checks each redirect. If YouTube returns a consent or anti-bot page, Albatros shows a sync error. Open the channel in the built-in browser, then try again. A sync does not replace a feed name that the user edited.
 
 When a feed URL is a subreddit page such as `https://www.reddit.com/r/homeautomation/`, Albatros requests its `.rss` Atom endpoint. After a successful sync, it saves the feed URL. This also repairs older subscriptions that stored the page URL.
