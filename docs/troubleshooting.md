@@ -62,6 +62,17 @@ Reddit serves a JavaScript anti-bot challenge; the embedded webview normally sol
 
 Reddit ended RSS feed support on November 13, 2026. Reddit can now return HTTP 429 or 404 for subreddit `.rss` URLs. This is a provider change. Repeated manual refreshes will not restore the feed. Albatros keeps posts already stored in its database. Reddit says there is no replacement for RSS feeds outside communities that you moderate.
 
+### Optional third-party feed
+
+OpenRSS can create an Atom feed from a public subreddit page. For example:
+
+- `https://openrss.org/feed/www.reddit.com/r/homeautomation/hot/`
+- `https://openrss.org/feed/www.reddit.com/r/DataHoarder/hot/`
+
+To try it, open **Feed Properties** for the existing Reddit feed. Replace its URL with the matching OpenRSS URL and save. Albatros keeps the articles already stored for that feed and starts a refresh. Use the existing feed instead of creating a second subscription if you want to keep one reading history.
+
+This is an independent service, not a Reddit or Albatros endpoint. OpenRSS receives your requests, including the subreddit name and your network address. It can delay updates or return HTTP 429. A `hot` feed shows selected posts, not every new post. Check the feed before you rely on it for complete coverage.
+
 A subreddit page URL must use the Atom endpoint, for example `https://www.reddit.com/r/homeautomation/.rss`. Albatros converts page URLs when you add a feed and repairs older subscriptions after a successful sync.
 
 Albatros uses the persistent Chromium session for Reddit RSS and honours provider cooldowns. If you must diagnose a 429 response:
