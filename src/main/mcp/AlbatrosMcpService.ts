@@ -7,6 +7,7 @@
  */
 
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
+import { app } from 'electron'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -104,10 +105,11 @@ export class AlbatrosMcpService {
 
   constructor(private readonly db: Database, private readonly services: Services) {
     this.token = this.getOrCreateToken()
-    const configuredPort = Number(process.env.ALBATROS_MCP_PORT ?? DEFAULT_PORT)
+    const defaultPort = app.isPackaged ? DEFAULT_PORT : DEFAULT_PORT + 1
+    const configuredPort = Number(process.env.ALBATROS_MCP_PORT ?? defaultPort)
     this.port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort < 65536
       ? configuredPort
-      : DEFAULT_PORT
+      : defaultPort
   }
 
   getConnectionInfo(): ConnectionInfo {

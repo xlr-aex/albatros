@@ -2,6 +2,8 @@
 
 Albatros starts an MCP server at `http://127.0.0.1:8765/mcp`. Only programs on this computer can connect to this address. Each request must include a bearer token.
 
+The development build uses port `8766` and a separate application-data directory. Replace the port in the examples below if you connect to the development build. You can set `ALBATROS_MCP_PORT` before startup to choose another port.
+
 Albatros prints the token once in its terminal at startup. To use the same token each time, set `ALBATROS_MCP_TOKEN` before you start Albatros. The value must contain at least 24 characters.
 
 ## Antigravity

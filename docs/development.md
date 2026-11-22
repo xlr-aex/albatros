@@ -32,6 +32,8 @@ Electron Vite builds three parts:
 
 During development, Vite serves the renderer on port 5273. It reloads the renderer after a change. Electron runs the main and preload code.
 
+Development uses a separate `albatros-dev` application-data directory. It does not open the installed app's database or Chromium cache. The development MCP server uses port `8766` by default. Set `ALBATROS_MCP_PORT` before startup to choose a different port.
+
 ## Recommended toolchain
 
 Use Node.js 20 or 22 LTS and npm. `better-sqlite3` contains native code. Build it for Electron's ABI. A build for the local Node ABI is not sufficient. `npm install` runs `electron-builder install-app-deps` in the `postinstall` step.

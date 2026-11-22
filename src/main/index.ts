@@ -40,6 +40,12 @@ import { ElectronBlocker } from '@cliqz/adblocker-electron'
 import { adsAndTrackingLists } from '@cliqz/adblocker'
 import fetch from 'cross-fetch'
 
+// Keep the development database and Chromium cache separate from the installed
+// app. Both processes can then run without writing to the same profile.
+if (!app.isPackaged) {
+  app.setPath('userData', `${app.getPath('userData')}-dev`)
+}
+
 // ── DB ────────────────────────────────────────────────────────────────────────
 import { getDatabase, closeDatabase } from './db/connection'
 import { runMigrations } from './db/migrations/runner'
